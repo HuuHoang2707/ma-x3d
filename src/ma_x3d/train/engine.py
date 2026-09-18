@@ -19,7 +19,10 @@ import time
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 
 from ..config import Config, save_config
 from ..data.dataset import build_datasets, make_loader
@@ -35,6 +38,7 @@ from ..models.wide_kernel import (
 )
 from ..ops.depthwise3d import use_fast_depthwise
 from ..progress import Progress
+from . import dist
 from .params import configure_phase, freeze_frozen_bn
 from .utils import ModelEMA, amp_dtype, cutmix, environment_info, make_scheduler, seed_everything
 
@@ -60,7 +64,9 @@ def _train_epoch(model, fwd, loader, opt, scaler, cfg: Config, device, amp, ema,
         freeze_frozen_bn(model)
     params = [p for g in opt.param_groups for p in g["params"]]
     loss_sum, correct, n = 0.0, 0, 0
-    bar = Progress(loader, desc=f"train ep {epoch}")
+    if hasattr(loader.sampler, "set_epoch"):  # DistributedSampler: new shuffle each epoch
+        loader.sampler.set_epoch(epoch)
+    bar = Progress(loader, desc=f"train ep {epoch}", enabled=dist.is_main())
     for clip, y in bar:
         clip, y = clip.to(device, non_blocking=True), y.to(device, non_blocking=True)
         mixed = t.cutmix_prob > 0 and len(y) > 1 and random.random() < t.cutmix_prob
@@ -85,6 +91,7 @@ def _train_epoch(model, fwd, loader, opt, scaler, cfg: Config, device, amp, ema,
         correct += (logits.argmax(1) == y).sum().item()
         n += len(y)
         bar.set(loss=loss_sum / n, acc=correct / n)
+    loss_sum, correct, n = dist.sum_all([loss_sum, correct, n], device)
     return {"loss": loss_sum / n, "acc": correct / n}
 
 
@@ -94,6 +101,15 @@ def _enter_phase(model, phase: str, cfg: Config):
     opt = torch.optim.AdamW(groups, betas=tuple(t.betas), weight_decay=t.weight_decay)
     span = t.probe_epochs if phase == "probe" else t.epochs - t.probe_epochs
     return opt, make_scheduler(opt, phase, span)
+
+
+def _wrap(model, cfg: Config, device):
+    """Forward module for training. DDP only tracks parameters that require grad when
+    it is built, so it is rebuilt after every phase switch."""
+    fwd = model
+    if torch.distributed.is_initialized():
+        fwd = DDP(model, device_ids=[device.index], forward_sync_buffers=False)
+    return torch.compile(fwd) if cfg.train.compile else fwd
 
 
 def _final_eval(model, loaders, cfg: Config, device, amp, out: Path, log) -> dict:
@@ -116,37 +132,59 @@ def _final_eval(model, loaders, cfg: Config, device, amp, out: Path, log) -> dic
         res["test_ring_off"] = off["metrics"]
         log(f"test with ring zeroed: acc {off['metrics']['accuracy']:.4f} "
             f"f1 {off['metrics']['f1']:.4f}")
+        # fp32 on one batch: under bf16 the two paths use different kernels and round
+        # differently, which would hide a real mismatch
         fused = copy.deepcopy(model)
         fuse_wide_kernels(fused)
-        fused_out = predict(fused, loaders["test"], device, amp, t.label_smoothing)
-        diff = float(abs(fused_out["probs"] - test["probs"]).max())
+        clip, _ = next(iter(loaders["test"]))
+        with torch.no_grad():
+            clip = clip.to(device)
+            a = model.eval()(clip).float().softmax(1)
+            b = fused.eval()(clip).float().softmax(1)
+        diff = float((a - b).abs().max())
         res["fused_max_prob_diff"] = diff
-        log(f"fused vs. reparam: max |dp| = {diff:.2e}")
+        log(f"fused vs. reparam (fp32, one batch): max |dp| = {diff:.2e}")
     return res
 
 
 def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bool = False) -> Path:
+    """Train one run. Under torchrun the run is split over all started GPUs."""
     t = cfg.train
+    rank, world, local = dist.init()
+    main = rank == 0
+    if world > 1:
+        device = torch.device("cuda", local)
+        if t.batch_size % world:
+            raise ValueError(f"batch_size {t.batch_size} is not divisible by {world} GPUs")
     out = run_dir(cfg)
     if (out / "results.json").exists() and not overwrite:
-        print(f"[skip] {out} already finished (use --overwrite to rerun)")
+        if main:
+            print(f"[skip] {out} already finished (use --overwrite to rerun)")
         return out
-    if out.exists() and overwrite:
-        shutil.rmtree(out)
-    if (out / "last.pt").exists() and not resume:
-        raise FileExistsError(f"{out} has a partial run; pass --resume or --overwrite")
-    out.mkdir(parents=True, exist_ok=True)
-    log = _Log(out / "train.log")
-    save_config(cfg, out / "config.yaml")
-    (out / "env.json").write_text(json.dumps(environment_info(device), indent=2))
+    if main:
+        if out.exists() and overwrite:
+            shutil.rmtree(out)
+        if (out / "last.pt").exists() and not resume:
+            raise FileExistsError(f"{out} has a partial run; pass --resume or --overwrite")
+        out.mkdir(parents=True, exist_ok=True)
+    dist.barrier()
+    log = _Log(out / "train.log") if main else (lambda msg: None)
+    if main:
+        save_config(cfg, out / "config.yaml")
+        env = environment_info(device) | {"world_size": world}
+        (out / "env.json").write_text(json.dumps(env, indent=2))
 
     seed_everything(cfg.seed)
     ds = build_datasets(cfg)
-    (out / "split.json").write_text(json.dumps(
-        {k: (v.indices.tolist() if v is not None else None) for k, v in ds.items()}))
+    if main:
+        (out / "split.json").write_text(json.dumps(
+            {k: (v.indices.tolist() if v is not None else None) for k, v in ds.items()}))
     w = cfg.data.num_workers
+    sampler = (DistributedSampler(ds["train"], world, rank, shuffle=True, seed=cfg.seed)
+               if world > 1 else None)
     loaders = {
-        "train": make_loader(ds["train"], t.batch_size, True, w, cfg.seed),
+        "train": make_loader(ds["train"], t.batch_size // world, True, w,
+                             cfg.seed + 1000 * rank, sampler),
         "test": make_loader(ds["test"], t.batch_size, False, w),
     }
     if ds["val"] is not None:
@@ -155,18 +193,20 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         loaders["val"] = loaders["test"]
     log(f"run {out} | protocol {cfg.data.protocol} | train {len(ds['train'])} samples "
         f"({len(ds['train'].indices)} clips) | val {len(loaders['val'].dataset)} | "
-        f"test {len(ds['test'])}")
+        f"test {len(ds['test'])}" + (f" | {world} GPUs x {t.batch_size // world} clips"
+                                     if world > 1 else ""))
 
     model = build_model(cfg.model).to(device)
     if t.fast_depthwise and device.type == "cuda":
         log(f"triton depthwise convs: {use_fast_depthwise(model)}")
+    if world > 1:
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     amp = amp_dtype(t.amp)
     scaler = torch.amp.GradScaler(device.type, enabled=t.amp == "fp16")
     ema = ModelEMA(model, t.ema_decay) if t.ema_decay > 0 else None
-    fwd = torch.compile(model) if t.compile else model
     n_params = sum(p.numel() for p in model.parameters())
 
-    start, phase, opt, sched = 0, None, None, None
+    start, phase, opt, sched, fwd = 0, None, None, None, None
     best_f1, best_loss, no_improve = -1.0, math.inf, 0
     if resume and (out / "last.pt").exists():
         ck = torch.load(out / "last.pt", map_location=device, weights_only=False)
@@ -178,6 +218,7 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         # phase of the last finished epoch: its optimizer state is what was saved
         phase = "probe" if start - 1 < t.probe_epochs else "finetune"
         opt, sched = _enter_phase(model, phase, cfg)
+        fwd = _wrap(model, cfg, device)
         opt.load_state_dict(ck["optimizer"])
         sched.load_state_dict(ck["scheduler"])
         scaler.load_state_dict(ck["scaler"])
@@ -189,6 +230,8 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         if want != phase:
             phase = want
             opt, sched = _enter_phase(model, phase, cfg)
+            fwd = None  # drop the old DDP wrapper before building the new one
+            fwd = _wrap(model, cfg, device)
             no_improve = 0
             n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
             lrs = ", ".join(f"{g['name']}={g['lr']:.0e}" for g in opt.param_groups)
@@ -198,43 +241,51 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         lrs = [g["lr"] for g in opt.param_groups]
         tr = _train_epoch(model, fwd, loaders["train"], opt, scaler, cfg, device, amp, ema,
                           epoch + 1)
-        judge = ema.module if ema is not None else model
-        va = predict(judge, loaders["val"], device, amp, t.label_smoothing)["metrics"]
         sched.step()
-        dt = time.time() - t0
-
-        improved = va["f1"] > best_f1
-        if improved:
-            best_f1, best_loss, no_improve = va["f1"], va["loss"], 0
-            torch.save({"model": judge.state_dict(), "epoch": epoch + 1, "val": va},
-                       out / "best.pt")
-        else:
-            no_improve += 1
-        row = {"epoch": epoch + 1, "phase": phase, "lr": lrs, "train_loss": tr["loss"],
-               "train_acc": tr["acc"], "val_loss": va["loss"], "val_acc": va["accuracy"],
-               "val_f1": va["f1"], "best": improved, "sec": round(dt, 1)}
-        with open(out / "metrics.jsonl", "a") as f:
-            f.write(json.dumps(row) + "\n")
-        eta = dt * (t.epochs - epoch - 1) / 60
-        log(f"ep {epoch + 1:02d}/{t.epochs} {phase:8s} | train {tr['loss']:.4f}/{tr['acc']:.3f} | "
-            f"val {va['loss']:.4f}/{va['accuracy']:.3f} f1 {va['f1']:.4f}"
-            f"{' *' if improved else '  '} | {dt:.0f}s | eta {eta:.0f} min")
-        torch.save({"model": model.state_dict(), "ema": ema.module.state_dict() if ema else None,
-                    "optimizer": opt.state_dict(), "scheduler": sched.state_dict(),
-                    "scaler": scaler.state_dict(), "epoch": epoch + 1, "best_f1": best_f1,
-                    "best_loss": best_loss, "no_improve": no_improve}, out / "last.pt")
-        if no_improve >= t.patience:
+        stop = False
+        if main:
+            judge = ema.module if ema is not None else model
+            va = predict(judge, loaders["val"], device, amp, t.label_smoothing)["metrics"]
+            dt = time.time() - t0
+            improved = va["f1"] > best_f1
+            if improved:
+                best_f1, best_loss, no_improve = va["f1"], va["loss"], 0
+                torch.save({"model": judge.state_dict(), "epoch": epoch + 1, "val": va},
+                           out / "best.pt")
+            else:
+                no_improve += 1
+            row = {"epoch": epoch + 1, "phase": phase, "lr": lrs, "train_loss": tr["loss"],
+                   "train_acc": tr["acc"], "val_loss": va["loss"], "val_acc": va["accuracy"],
+                   "val_f1": va["f1"], "best": improved, "sec": round(dt, 1)}
+            with open(out / "metrics.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+            eta = dt * (t.epochs - epoch - 1) / 60
+            log(f"ep {epoch + 1:02d}/{t.epochs} {phase:8s} | "
+                f"train {tr['loss']:.4f}/{tr['acc']:.3f} | "
+                f"val {va['loss']:.4f}/{va['accuracy']:.3f} f1 {va['f1']:.4f}"
+                f"{' *' if improved else '  '} | {dt:.0f}s | eta {eta:.0f} min")
+            torch.save({"model": model.state_dict(),
+                        "ema": ema.module.state_dict() if ema else None,
+                        "optimizer": opt.state_dict(), "scheduler": sched.state_dict(),
+                        "scaler": scaler.state_dict(), "epoch": epoch + 1, "best_f1": best_f1,
+                        "best_loss": best_loss, "no_improve": no_improve}, out / "last.pt")
+            stop = no_improve >= t.patience
+        if dist.broadcast_bool(stop, device):
             log(f"early stop after epoch {epoch + 1}")
             stopped = True
             break
 
-    best = torch.load(out / "best.pt", map_location=device, weights_only=False)
-    model.load_state_dict(best["model"])
-    results = _final_eval(model, loaders, cfg, device, amp, out, log)
-    results.update({"name": cfg.name, "seed": cfg.seed, "best_epoch": best["epoch"],
-                    "val": best["val"], "early_stopped": stopped, "params": n_params,
-                    "peak_mem_mb": (torch.cuda.max_memory_allocated(device) / 2**20
-                                    if device.type == "cuda" else None)})
-    (out / "results.json").write_text(json.dumps(results, indent=2))
-    (out / "last.pt").unlink(missing_ok=True)  # best.pt is kept
+    fwd = None
+    if main:
+        best = torch.load(out / "best.pt", map_location=device, weights_only=False)
+        model.load_state_dict(best["model"])
+        results = _final_eval(model, loaders, cfg, device, amp, out, log)
+        results.update({"name": cfg.name, "seed": cfg.seed, "best_epoch": best["epoch"],
+                        "val": best["val"], "early_stopped": stopped, "params": n_params,
+                        "world_size": world,
+                        "peak_mem_mb": (torch.cuda.max_memory_allocated(device) / 2**20
+                                        if device.type == "cuda" else None)})
+        (out / "results.json").write_text(json.dumps(results, indent=2))
+        (out / "last.pt").unlink(missing_ok=True)  # best.pt is kept
+    dist.barrier()
     return out

@@ -7,8 +7,10 @@ GPUS        ?= 4 5 6 7
 SEEDS       ?= 0 1 2
 CONFIG      ?= configs/ma_x3d.yaml
 RUN         ?= runs/ma_x3d/seed0
+DDP_GPUS    ?= 4,5,6,7
+comma       := ,
 
-.PHONY: env data test test-all lint format smoke train eval bench report ablation-p1 ablation-all legacy export
+.PHONY: env data test test-all lint format smoke train train-ddp eval bench report ablation-p1 ablation-all legacy export
 
 env:            ## create .venv with ROCm PyTorch and the package
 	uv venv --python 3.12 .venv
@@ -37,6 +39,10 @@ smoke:          ## 2 short epochs on the real data to check the GPU setup
 
 train:          ## one run: make train CONFIG=configs/x3d_m.yaml GPU=5
 	HIP_VISIBLE_DEVICES=$(GPU) $(CLI) train $(CONFIG)
+
+train-ddp:      ## one run on several GPUs: make train-ddp DDP_GPUS=4,5,6,7 CONFIG=...
+	HIP_VISIBLE_DEVICES=$(DDP_GPUS) .venv/bin/torchrun --standalone \
+	  --nproc_per_node=$(words $(subst $(comma), ,$(DDP_GPUS))) -m ma_x3d.cli train $(CONFIG)
 
 eval:           ## re-evaluate a finished run on the test split
 	HIP_VISIBLE_DEVICES=$(GPU) $(CLI) eval $(RUN)

@@ -24,10 +24,10 @@ def _mode() -> str:
 
 
 class Progress:
-    def __init__(self, iterable, desc: str, every: float = 0.25):
+    def __init__(self, iterable, desc: str, every: float = 0.25, enabled: bool = True):
         self.iterable, self.desc, self.every = iterable, desc, every
         self.total = len(iterable) if hasattr(iterable, "__len__") else None
-        self.mode = _mode()
+        self.mode = _mode() if enabled else "off"
         self.stats: dict[str, str] = {}
         self._bar = None
 

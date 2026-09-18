@@ -103,6 +103,21 @@ instead of 298 ms. `--set train.fast_depthwise=false` switches back to MIOpen. T
 block sizes can be re-tuned with `MA_X3D_DW_BLOCK` / `MA_X3D_DW_BLOCK_W`; the GPU
 tests (`pytest tests/test_gpu.py`) check the kernels against `F.conv3d`.
 
+### One run on several GPUs
+
+```bash
+make train-ddp DDP_GPUS=4,5,6,7 CONFIG=configs/legacy/notebook_v5.yaml
+# = HIP_VISIBLE_DEVICES=4,5,6,7 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+#     -m ma_x3d.cli train configs/legacy/notebook_v5.yaml
+```
+
+`train.batch_size` stays the total batch: 20 on 4 GPUs is 5 clips per GPU, with
+BatchNorm synchronised across GPUs, so the training is the same as on one GPU. The batch
+size must be divisible by the number of GPUs. Measured at 32 frames, batch 20: 91 s per
+epoch on 4 GPUs against 253 s on one. At 16 frames with batch 12 (3 clips per GPU) the
+gain is small; there, running different seeds on different GPUs (`sweep`) is the
+better use of the GPUs.
+
 ### What a run writes
 
 ```text

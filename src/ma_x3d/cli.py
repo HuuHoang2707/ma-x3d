@@ -56,7 +56,12 @@ def cmd_train(a):
 
     overrides = list(a.overrides) + ([f"seed={a.seed}"] if a.seed is not None else [])
     cfg = load_config(a.config, overrides)
-    train(cfg, _device(a.device), resume=a.resume, overwrite=a.overwrite)
+    from .train import dist
+
+    try:
+        train(cfg, _device(a.device), resume=a.resume, overwrite=a.overwrite)
+    finally:
+        dist.cleanup()
 
 
 def cmd_eval(a):

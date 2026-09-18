@@ -89,13 +89,15 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     return out
 
 
-def make_loader(ds: Dataset, batch_size: int, train: bool, workers: int, seed: int = 0):
+def make_loader(ds: Dataset, batch_size: int, train: bool, workers: int, seed: int = 0,
+                sampler=None):
     g = torch.Generator()
     g.manual_seed(seed)
     return DataLoader(
         ds,
         batch_size=batch_size,
-        shuffle=train,
+        shuffle=train and sampler is None,
+        sampler=sampler,
         drop_last=train and len(ds) > batch_size,
         num_workers=workers,
         pin_memory=torch.cuda.is_available(),
