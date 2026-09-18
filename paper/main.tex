@@ -1,0 +1,504 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage[T1]{fontenc}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{outlinegray}{gray}{0.35}
+\newenvironment{outline}[1]
+  {\par\medskip\noindent\color{outlinegray}\small
+   \textbf{Outline.} \textit{#1}\begin{itemize}\setlength{\itemsep}{2pt}}
+  {\end{itemize}\par\medskip}
+
+\begin{document}
+
+\title{MA-X3D: A Lightweight Motion-Attentive 3D CNN\\
+for Violence Detection in Surveillance Video}
+
+\author{\IEEEauthorblockN{Nguyen Huu Hoang}
+\IEEEauthorblockA{\textit{School of Information and Communications Technology} \\
+\textit{Hanoi University of Science and Technology}\\
+Hanoi, Vietnam \\
+hoang.nh225972@sis.hust.edu.vn}
+\and
+\IEEEauthorblockN{Ngo Thanh Trung}
+\IEEEauthorblockA{\textit{School of Information and Communications Technology} \\
+\textit{Hanoi University of Science and Technology}\\
+Hanoi, Vietnam}
+}
+
+\maketitle
+
+\begin{abstract}
+Surveillance video is now produced far faster than operators can watch
+it, which motivates automatic detection of violent events. On the
+RWF-2000 benchmark, the highest reported accuracies come from
+transformer and convolution--transformer backbones with tens to
+hundreds of millions of parameters. Models of that size are expensive to
+run on every camera stream of an installation. This paper keeps a
+compact 3D convolutional backbone, X3D-M, and adds two small modules to
+it. The first, Motion Attention, computes a multi-scale frame-difference
+map, converts it into four learnable temporal modes, and uses them to
+gate the intermediate features towards regions with movement. The second
+is a wide-kernel convolution that enlarges the spatial support of the
+two earliest residual stages from $3\times3$ to $5\times5$; the added
+outer ring of weights is trained in its own parameter group at a higher
+learning rate and is fused into a single kernel after training. A
+person-centred crop prepares the input for the static-camera setting.
+Both modules are initialised as an identity, so training starts from the
+unmodified pre-trained backbone. On RWF-2000 the model reaches 90.5\%
+accuracy and 0.91 F1 on the violent class, 5.75 points above the X3D-M
+baseline, using 3.02M parameters and 5.16 GFLOPs per clip. It reaches
+97.0\% on the Hockey Fight dataset. An ablation reports the contribution
+of each component.
+\end{abstract}
+
+\begin{IEEEkeywords}
+violence detection, video action recognition, surveillance video,
+efficient 3D CNN, motion attention, structural reparameterisation
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:intro}
+
+The number of closed-circuit television (CCTV) cameras in public spaces
+has grown faster than the capacity to monitor them. By the end of 2019
+an estimated 770 million surveillance cameras were in
+operation~\cite{cnbc2019}, and a large metropolitan network can produce
+hundreds of terabytes of footage per day. Most installations still rely
+on operators watching live feeds. Vigilance studies show that this is
+unreliable over long shifts: the ability to detect infrequent signals in
+a continuous monitoring task starts to fall within the first twenty
+minutes and keeps falling afterwards~\cite{mackworth1948}. An automatic
+detector does not remove the operator from the loop. It flags candidate
+events so that attention can be spent on those rather than on all
+streams at once.
+
+Violent events are hard to detect from surveillance footage. They
+usually last a few seconds, involve fast and irregular body movement,
+and may cover only a small part of a wide-angle frame. A detector also
+has to work across many camera viewpoints, resolutions and lighting
+conditions, and has to separate violence from non-violent activity that
+looks similar, such as animated conversation or horseplay. Work on the
+problem has followed video action recognition more generally: from
+hand-crafted motion descriptors~\cite{idt,vif,hockey}, to two-stream
+networks that consume pre-computed optical flow~\cite{twostream}, to 3D
+convolutional networks that learn spatio-temporal features from raw
+frames~\cite{i3d,slowfast,x3d}, and more recently to video
+transformers~\cite{timesformer,videoswin}.
+
+Cost is a third requirement and it is often left out of the comparison.
+An installation may carry tens or hundreds of cameras, so a detector is
+only usable if it can run on every stream at the same time. Recent
+results on RWF-2000~\cite{rwf2000} have moved away from that constraint.
+The highest published accuracy is 94.00\%, obtained by
+CUE-Net~\cite{cuenet} with 354M parameters and 5826 GFLOPs per clip.
+Masked-autoencoder video transformers report 91.8\% to 92.4\% with 67M
+to 305M parameters~\cite{videomae,mixvit}. Accuracy on this benchmark
+has therefore been obtained at one to two orders of magnitude more
+computation than a per-stream detector can afford. A separate line of
+work has aimed for competitive accuracy inside a small
+budget~\cite{rwf2000,sepconvlstm,mdcn,biltma}, and this paper follows
+that line.
+
+Two gaps remain in how compact 3D backbones are used for violence
+detection. First, motion is only implicit. A 3D backbone has to infer
+movement from appearance differences between frames and is given no
+explicit motion signal, although the frame difference is available at
+the cost of a subtraction and was shown by
+SepConvLSTM~\cite{sepconvlstm} to work as a substitute for optical flow
+on this benchmark. Existing work that uses this cue passes it through a
+second input stream, which requires a second backbone and roughly
+doubles the cost. Second, the early receptive field is narrow. The
+depthwise kernels of X3D have a fixed $3\times3$ spatial support at
+every stage, which limits the earliest stages. Those stages run at the
+highest spatial resolution and are the ones best placed to resolve
+small, fast displacements.
+
+We propose MA-X3D, which addresses both gaps while staying in the
+lightweight range. The X3D-M backbone~\cite{x3d} is left unchanged and
+two small modules are attached to it. Both are initialised as an
+identity, so the model at epoch zero is functionally the pre-trained
+backbone and the new parameters are learned as departures from it. This
+matters on RWF-2000, where 1600 training clips are too few to learn a
+spatio-temporal representation from scratch and randomly initialised
+additions would disturb the features transferred from Kinetics
+pre-training. The Motion Attention module converts a multi-scale frame
+difference into four learnable temporal modes and uses a near-zero gate
+to modulate the Res4 features multiplicatively. The motion cue therefore
+re-weights features the backbone has already computed, and it does so
+inside one backbone instead of two. The wide-kernel convolution enlarges
+the depthwise kernels of Res2 and Res3 by structural
+reparameterisation~\cite{repvgg,acnet}: a zero-initialised outer ring is
+added around the pre-trained centre and is placed in a parameter group
+whose learning rate is fifty times that of the backbone. Without this
+separation the ring stays close to its initialisation. After training
+the two terms fuse into a single $5\times5$ kernel, so no training-time
+structure remains at inference.
+
+The contributions of this paper are the following.
+\begin{itemize}
+  \item A Motion Attention module that adds an explicit
+        frame-difference cue to a single 3D backbone through learnable
+        temporal modes and an identity-initialised multiplicative gate.
+        It adds about 2.5K parameters and no second branch.
+  \item A wide-kernel reparameterised convolution that enlarges the
+        receptive field of the earliest stages and leaves no structural
+        overhead at inference, together with the learning-rate scheme
+        that makes the added ring trainable. Naive dense inflation of
+        the same kernel gains 2.25 accuracy points less and leaves the
+        ring close to zero.
+  \item An evaluation on the official RWF-2000 split, reaching 90.5\%
+        accuracy and 0.91 F1 on the violent class with 3.02M parameters
+        and 5.16 GFLOPs, an ablation for each component, a Grad-CAM and
+        gate analysis, and a cross-domain result on Hockey Fight
+        (97.0\%).
+\end{itemize}
+
+Section~\ref{sec:related} reviews related work,
+Section~\ref{sec:method} describes MA-X3D,
+Section~\ref{sec:exp} reports the experiments, and
+Section~\ref{sec:conclusion} concludes.
+
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Violence detection}
+
+Early methods described violent action with hand-crafted features.
+Wang and Schmid~\cite{idt} encoded motion along densely sampled
+trajectories, Hassner~et~al.~\cite{vif} summarised how optical-flow
+magnitudes change over time, and Bermejo~et~al.~\cite{hockey} proposed
+acceleration-based descriptors alongside the Hockey Fight dataset.
+These representations are cheap and interpretable, but their accuracy
+falls when the camera angle, scene type, or lighting differs from the
+training conditions.
+
+Two-stream networks~\cite{twostream} replaced the hand-crafted step
+with learned features. One stream processes RGB frames and the other
+processes pre-computed optical flow, which provides a strong motion
+signal. The cost is that dense optical flow is expensive to compute,
+often more than the recognition network itself, and this limits
+real-time use.
+
+Three-dimensional convolutional networks removed the optical flow
+dependency. I3D~\cite{i3d} inflates ImageNet-pretrained 2D filters
+into the temporal dimension, SlowFast~\cite{slowfast} runs two
+pathways at different frame rates to capture slow semantics and fast
+motion separately, and X3D~\cite{x3d} finds a compact architecture
+through progressive expansion of six dimensions. These models learn
+spatio-temporal features directly from RGB.
+
+Video transformers~\cite{timesformer,videoswin} extended the
+self-attention mechanism to space and time and raised accuracy further.
+On large benchmarks they outperform 3D convolutional networks, but they
+depend on large-scale pre-training. On RWF-2000, which provides only
+1600 training clips, that dependence is a practical problem.
+
+Table~\ref{tab:sota} places the methods discussed next to each other
+on the RWF-2000 benchmark~\cite{rwf2000}. ConvLSTM~\cite{convlstm}
+reaches 77.00\% and C3D~\cite{c3d} 82.75\%. The Flow Gated
+Network~\cite{rwf2000}, which uses an optical-flow branch as a learned
+gate over the RGB branch, reaches 87.25\%.
+SepConvLSTM~\cite{sepconvlstm} processes background-suppressed frames
+and frame differences through two MobileNetV2 backbones fused by a
+separable convolutional LSTM, reaching 89.75\%; the frame-difference
+cue is effective, but the two-backbone construction roughly doubles the
+computational cost. A multi-dimensional convolutional network with two
+streams~\cite{mdcn} reaches 89.70\% below one million parameters, and
+a 2D EfficientNet-B0 with bidirectional motion attention and temporal
+shift~\cite{biltma} reaches 90.25\% at 4.48M parameters. At the other
+end, VideoMAE vision transformers reach 91.8\% to 92.4\% with 67M to
+305M parameters~\cite{videomae,mixvit}, and CUE-Net~\cite{cuenet}
+reaches 94.00\% using person-centred cropping, an enhanced UniformerV2
+backbone, and a modified efficient additive attention module at 354M
+parameters and 5826 GFLOPs per clip.
+
+\subsection{Efficient video backbones}
+
+X3D~\cite{x3d} generates a family of models by progressively enlarging
+a small 2D network one axis at a time along six axes: temporal
+duration, frame rate, spatial resolution, depth, channel width, and
+bottleneck width. At each step the axis with the best accuracy-to-cost
+ratio is kept. The medium variant, X3D-M, attains 76.0\% top-1
+accuracy on Kinetics-400 with 3.8M parameters and 6.2 GFLOPs per view.
+This is on par with SlowFast R50 (75.6\%, 34.4M) and Non-local R50
+(76.5\%, 35.3M) while using about nine times fewer parameters. X3D-S
+and X3D-M share an identical parameter count and differ only in input
+resolution; parameters grow only from X3D-XL onward. X3D-M is
+therefore the most accurate configuration within the minimal parameter
+budget, which is why it is used as the backbone here.
+
+\subsection{Motion cue, attention, and reparameterisation}
+
+Under a static camera the background does not move, so the absolute
+difference between consecutive frames isolates the movement of the
+people in the scene. This is cheaper than optical flow and does not
+require camera-motion compensation. SepConvLSTM~\cite{sepconvlstm}
+showed that it is an effective motion cue for violence detection.
+
+Multiplicative gating, used in Squeeze-and-Excitation
+networks~\cite{se} and CBAM~\cite{cbam}, re-weights feature maps with
+a learned signal. A gate $g$ produces the modulated output
+$x \odot (1+g)$. When the last layer of the gate is initialised to
+near-zero weights, $g \approx 0$ and the module starts as an identity,
+which lets new parameters be added to a pre-trained backbone without
+disturbing the transferred features.
+
+Structural reparameterisation exploits the linearity of convolution.
+Because a sum of convolutions over the same input is equivalent to a
+single convolution with the summed kernel, extra branches used during
+training can be fused into one kernel at inference. RepVGG~\cite{repvgg}
+trains a multi-branch block and fuses it into a plain convolution for
+deployment; ACNet~\cite{acnet} adds asymmetric kernels that merge back
+into the original square kernel. Both methods fuse back to the original
+kernel shape. In the wide-kernel construction of
+Section~\ref{sec:method}, the added ring fuses into a larger kernel,
+so the extra spatial support is retained.
+
+\section{Proposed Method}
+\label{sec:method}
+
+\subsection{Overview}
+
+The task is clip-level binary classification. A trimmed surveillance
+clip is represented by an RGB tensor $x \in \mathbb{R}^{3 \times T
+\times H \times W}$ and a single-channel motion map $m \in
+\mathbb{R}^{1 \times T \times H \times W}$, with $T=16$ and
+$H=W=224$. The model $f_\theta$ maps these to two scores and the
+prediction is $\hat{y} = \arg\max f_\theta(x, m)$.
+
+Fig.~\ref{fig:pipeline} shows the pipeline. An offline stage builds
+a cached dataset: frames are extracted, a person-centred crop is
+computed and applied, and contrast is enhanced. At training and
+inference time, 16 frames are sampled from the stored clip, the motion
+map is computed from the augmented frames, and the RGB tensor and
+motion map are fed to the backbone.
+
+Three principles govern the design. \textbf{P1~Lightweight}: no second
+branch; the modules reuse depthwise convolutions and add about 36K
+parameters in total. \textbf{P2~Identity initialisation}: each module
+produces an identity transformation at epoch zero, so the augmented
+model starts from the unmodified pre-trained backbone.
+\textbf{P3~No inference-time overhead}: any extra structure used during
+training is fused away before deployment.
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{fig/pipeline.pdf}
+  \caption{Overall pipeline of MA-X3D. Offline preprocessing builds the
+  cached dataset; the backbone applies wide-kernel convolutions in Res2
+  and Res3 and the Motion Attention module after Res4.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Person-centred region of interest}
+
+A five-second window centred on the clip is sampled at 64 uniformly
+spaced frames. YOLOv8n~\cite{yolov8} is run on 12 of them to detect
+people, and the centres of all detected boxes are clustered with
+DBSCAN~\cite{dbscan} using a neighbourhood radius of
+$0.15 \max(H, W)$ and $\mathrm{minPts}=2$. The bounding box of the
+most populated cluster, enlarged by a 20\% margin on each side, is
+used as the crop. The full frame is kept when no person is detected.
+
+Clustering rather than taking the union of all detected boxes is a
+deliberate choice. Bystanders standing apart from the action would
+extend the union box to include them, diluting the motion signal the
+crop is meant to concentrate.
+
+The crop is a single static box applied to every frame of the clip.
+Because the camera is fixed and the box does not move, the background
+stays registered across frames. The frame difference computed in the
+next section therefore reflects genuine person motion rather than
+apparent motion caused by a shifting window. A per-frame tracking crop
+would break this property.
+
+Each cropped frame is denoised with a bilateral filter and
+contrast-enhanced with CLAHE applied to the luminance channel (clip
+limit 2.0, $8 \times 8$ tiles), then resized to $224 \times 224$. At
+load time, augmentations including brightness and saturation shifts,
+horizontal flip, random crop, rotation, and Gaussian blur are applied
+identically to all frames of a clip. Applying the same transform to
+every frame preserves the inter-frame registration on which the motion
+map depends.
+
+\subsection{Motion Attention}
+\label{sec:ma}
+
+Let $d^{(s)}_t = \frac{1}{3} \sum_{c=1}^{3} |x_{c,t} - x_{c,t-s}|$
+be the channel-averaged absolute frame difference at step $s$ and time
+$t$. Using two temporal scales $s \in \{1, 2\}$ captures both fast and
+slower motion. The single-channel motion map is
+\begin{equation}
+  m_t = \min\!\left( \max\!\left(d^{(1)}_t,\, d^{(2)}_t\right),\; 0.2 \right) \times 5 \,.
+  \label{eq:motion}
+\end{equation}
+The threshold 0.2 saturates large values produced by illumination
+flicker or compression artefacts while mapping typical inter-frame
+differences to approximately $[0, 1]$. Taking the element-wise maximum
+rather than concatenating keeps the map single-channel; a location is
+marked as moving if either scale detects motion.
+
+A temporal convolution with kernel size $(3, 1, 1)$ maps the
+single-channel map to $N=4$ channels:
+$M = \mathrm{TConv}(m) \in \mathbb{R}^{4 \times T \times H \times W}$.
+Because the spatial extent is one, this convolution mixes information
+only along time, so each output channel can represent a different
+temporal pattern. The first mode is initialised as a temporal impulse
+on the current frame, reproducing the raw motion map, and the remaining
+three from $\mathcal{N}(0, 0.05^2)$.
+
+The four modes are resized to the Res4 feature resolution by trilinear
+interpolation, giving $\tilde{M} \in \mathbb{R}^{4 \times T' \times 14
+\times 14}$. A gating network $g$ maps $\tilde{M}$ to a modulation:
+$1 \times 1 \times 1$ convolution to 24 channels, ReLU, $1 \times 1
+\times 1$ convolution to 96 channels, then tanh. The modulated Res4
+feature map $f$ is
+\begin{equation}
+  y = f \odot \bigl(1 + g(\tilde{M})\bigr) \,.
+  \label{eq:gate}
+\end{equation}
+Since $g \in [-1, 1]$, a position is amplified where $g > 0$,
+suppressed where $g < 0$, and unchanged where $g = 0$. The final
+convolution of the gate is initialised from $\mathcal{N}(0, 0.01^2)$
+with zero bias, so $g \approx 0$ and $y \approx f$ at the start of
+training, satisfying P2.
+
+The module is placed after Res4 because at $14 \times 14$ the feature
+map still resolves spatial position while the features are already
+semantic. Res2 and Res3 operate on lower-level texture, and Res5 at
+$7 \times 7$ is too coarse to localise where motion occurs. The
+residual is multiplicative rather than additive: multiplication
+re-weights features the backbone has already computed, while addition
+would inject new content that competes with the pre-trained
+representation. The multiplier $1 + g$ is bounded to $[0, 2]$, so the
+motion signal cannot overwhelm the appearance features.
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{fig/ma.pdf}
+  \caption{The Motion Attention module. The motion map is converted to
+  four temporal modes, interpolated to the Res4 resolution, and gated
+  to modulate the features as $f \odot (1+g)$.}
+  \label{fig:ma}
+\end{figure}
+
+\subsection{Wide-kernel reparameterised convolution}
+\label{sec:wk}
+
+The depthwise convolutions in Res2 and Res3 use a $3 \times 3 \times
+3$ kernel and operate at the highest spatial resolutions in the network,
+$56 \times 56$ and $28 \times 28$. Widening their spatial support from
+$3 \times 3$ to $5 \times 5$ increases the receptive field of these
+stages, which is where fine and fast spatial displacements are best
+resolved.
+
+A naive approach inflates each kernel to a dense $5 \times 5$ kernel
+with the outer ring initialised to zero. This does not work: the ring
+is treated as part of the same parameter group as the backbone and
+receives only the small backbone learning rate. Under AdamW the
+effective step size is controlled by the learning rate rather than the
+raw gradient scale, so at $10^{-5}$ the ring barely moves. The ablation
+in Section~\ref{sec:exp} confirms this.
+
+The widened convolution is instead expressed as
+\begin{equation}
+  W_{\text{eff}} = \mathrm{Pad}_{3 \to 5}(W_{\text{base}})
+    + M_{\text{ring}} \odot W_\delta \,,
+  \label{eq:rep}
+\end{equation}
+where $W_{\text{base}}$ is the pre-trained $3 \times 3$ kernel padded
+to $5 \times 5$, $W_\delta$ is a $5 \times 5$ kernel initialised to
+zero, and $M_{\text{ring}}$ is a fixed binary mask that is one on the
+16 outer positions of the $5 \times 5$ grid and zero on the central
+$3 \times 3$. The mask ensures that the centre of the effective kernel
+always equals the pre-trained weights, and the zero initialisation
+makes the convolution an identity at the start of training.
+
+Because $W_{\text{base}}$ and $W_\delta$ are separate parameters,
+$W_\delta$ can be placed in a high-learning-rate group
+($5 \times 10^{-4}$) while $W_{\text{base}}$ remains at $10^{-5}$.
+This separation is what makes the outer ring trainable. Since
+convolution is linear in its kernel, the two terms in~(\ref{eq:rep})
+fuse after training into a single $5 \times 5$ kernel, leaving no
+structural overhead at inference. The widening is applied to all eight
+depthwise convolutions in Res2 (three blocks) and Res3 (five blocks),
+adding 33{,}696 parameters.
+
+Widening the depthwise kernel from $k=3$ to $k=5$ doubles the
+per-convolution contribution to the receptive field from $k-1=2$ to
+$k-1=4$ pixels. A stage of $L$ blocks therefore grows from $2L$ to
+$4L$ pixels: from 6 to 12 across Res2 and from 10 to 20 across Res3.
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{fig/wk.pdf}
+  \caption{The wide-kernel reparameterised convolution. During training
+  the $5 \times 5$ kernel is the frozen $3 \times 3$ centre padded to
+  $5 \times 5$ plus a zero-initialised outer ring trained at a higher
+  learning rate. At inference the two fuse into a single $5 \times 5$
+  kernel.}
+  \label{fig:wk}
+\end{figure}
+
+\subsection{Two-phase discriminative fine-tuning}
+
+Training combines a large pre-trained backbone with several randomly
+initialised modules. The schedule adapts the new components first
+before touching the backbone.
+
+In the probe phase (four epochs), the entire backbone is frozen and
+only the classification head and the Motion Attention module are
+trained at a learning rate of $10^{-3}$ with a one-epoch linear
+warm-up followed by cosine annealing. This aligns the new components
+with the frozen features before any backbone weight moves.
+
+In the fine-tuning phase, Res2, Res3, and Res5 are unfrozen together
+with the head, while Res4 stays frozen. Res4 contains no newly added
+parameters, and keeping it frozen reduces the number of trainable
+backbone weights. Two parameter groups are used: pre-trained backbone
+parameters at $10^{-5}$ and new parameters (head, Motion Attention
+module, and outer-ring kernels) at $5 \times 10^{-4}$. The optimiser
+is rebuilt at the phase transition to reset the adaptive moment
+estimates. The loss is cross-entropy with label smoothing
+$\varepsilon = 0.1$.
+
+\section{Experiments}
+\label{sec:exp}
+
+\begin{outline}{1100 words. 90.5\% at 3.02M parameters, the highest in the lightweight group}
+  \item Datasets, protocol, metrics.
+  \item Main results and comparison table.
+  \item Ablation, including naive inflation against reparameterisation.
+  \item Qualitative analysis and error modes.
+  \item Cross-domain result and deployment cost.
+  \item Limitations.
+\end{outline}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\begin{outline}{120 words}
+  \item The two contributions, the headline numbers, and three
+        directions for future work.
+\end{outline}
+
+\section*{Open items}
+
+\begin{outline}{delete before submission}
+  \item Four figures to export from the thesis.
+  \item Missing GFLOPs for two methods in the cost table.
+  \item Single run on a single split so far.
+\end{outline}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}
