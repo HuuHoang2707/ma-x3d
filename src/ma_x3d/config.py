@@ -28,6 +28,8 @@ class DataConfig:
     split_seed: int = 0
     augment: bool = True
     augment_multiplier: int = 2  # each training clip appears this many times per epoch
+    # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)
+    train_span: list[float] | None = field(default_factory=lambda: [0.6, 1.0])
     rotation_deg: float = 10.0
     temporal_inverse: bool = False
     num_workers: int = 12
@@ -71,9 +73,10 @@ class TrainConfig:
     # "exact" matches module prefixes; "legacy" copies the notebook's substring matching.
     param_match: str = "exact"
     ring_lr: str = "new"  # learning-rate group of the wide-kernel ring: new | backbone
+    head_new: str = "proj"  # part of the X3D head trained as new: all | proj (see params.py)
     freeze_bn: bool = True  # keep BatchNorm of frozen stages in eval mode
-    ema_decay: float = 0.0  # 0 disables EMA
-    cutmix_prob: float = 0.0
+    ema_decay: float = 0.999  # 0 disables EMA
+    cutmix_prob: float = 0.5
     cutmix_alpha: float = 1.0
     compile: bool = False
     # Triton kernels for depthwise 3D convs (same result, ~2x faster training on MI250)

@@ -36,6 +36,7 @@ class ClipDataset(Dataset):
         training: bool,
         augment: ClipAugment | None = None,
         multiplier: int = 1,
+        span_frac: tuple[float, float] | None = None,
     ):
         self.x_path = str(x_path)
         self.labels = labels
@@ -44,6 +45,7 @@ class ClipDataset(Dataset):
         self.training = training
         self.augment = augment if training else None
         self.multiplier = multiplier if training else 1
+        self.span_frac = tuple(span_frac) if span_frac else None
         self._x = None
 
     def __len__(self) -> int:
@@ -59,7 +61,7 @@ class ClipDataset(Dataset):
         idx = int(self.indices[i % len(self.indices)])
         stored = self.x.shape[1]
         if self.training:
-            t = random_indices(stored, self.frames, random)
+            t = random_indices(stored, self.frames, random, span_frac=self.span_frac)
         else:
             t = uniform_indices(stored, self.frames)
         clip = torch.from_numpy(np.ascontiguousarray(self.x[idx, t]))  # [T, C, H, W] uint8
@@ -77,7 +79,8 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     split = make_splits(ytr, yte, d.protocol, d.val_fraction, d.val_blocks, d.split_seed)
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
-        "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier),
+        "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,
+                             d.train_span),
         "test": ClipDataset(xte, yte, split["test"], d.frames, False),
         "val": None,
     }

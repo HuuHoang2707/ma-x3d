@@ -6,6 +6,7 @@ data:
   protocol: test_as_val
   frames: 32
   augment_multiplier: 1
+  train_span: null
 model:
   normalize_input: false
   head_dropout: 0.3
@@ -17,6 +18,7 @@ train:
   batch_size: 20
   amp: fp16
   param_match: legacy
+  head_new: all
   freeze_bn: true
   ema_decay: 0.999
   cutmix_prob: 0.5

@@ -84,6 +84,20 @@ def test_exact_phases(x3d_blocks):
     assert id(ring) in {id(p) for p in groups[0]["params"]}
 
 
+def test_head_new_proj_is_a_linear_probe(x3d_blocks):
+    model = make(x3d_blocks)
+    cfg = TrainConfig(head_new="proj")
+    configure_phase(model, "probe", cfg)
+    names = trainable_names(model)
+    assert names and all(n.startswith(("motion_attn.", "blocks.5.proj.")) for n in names)
+    groups = configure_phase(model, "finetune", cfg)
+    new = {id(p) for g in groups if g["name"] == "new" for p in g["params"]}
+    params = dict(model.named_parameters())
+    assert id(params["blocks.5.proj.weight"]) in new
+    assert id(params["blocks.5.pool.post_conv.weight"]) not in new
+    assert params["blocks.5.pool.post_conv.weight"].requires_grad  # head is in unfreeze
+
+
 def test_legacy_matching_reproduces_notebook_leak(x3d_blocks):
     model = make(x3d_blocks)
     cfg = TrainConfig(param_match="legacy")

@@ -24,10 +24,10 @@ def to_onnx(model: nn.Module, path: Path, frames: int = 16, size: int = 224,
             opset: int = 18) -> Path:
     model = copy.deepcopy(model).cpu().eval()
     fuse_wide_kernels(model)
-    dummy = torch.rand(1, 3, frames, size, size)
-    batch = torch.export.Dim("batch", min=1, max=64)
+    dummy = torch.rand(2, 3, frames, size, size)  # batch 1 would be specialised away
     torch.onnx.export(model, (dummy,), str(path), input_names=["clip"], output_names=["logits"],
-                      opset_version=opset, dynamo=True, dynamic_shapes=({0: batch},))
+                      opset_version=opset, dynamo=True,
+                      dynamic_shapes=({0: torch.export.Dim.DYNAMIC},))
     return path
 
 
@@ -67,7 +67,8 @@ def quantize_int8(fp32_path: Path, out_path: Path, clips: list[np.ndarray]) -> P
             return None if x is None else {"clip": x[None].astype(np.float32)}
 
     pre = out_path.with_name(out_path.stem + "_pre.onnx")
-    quant_pre_process(str(fp32_path), str(pre))
+    # ORT's symbolic shape inference cannot follow the dynamic batch through Conv3d
+    quant_pre_process(str(fp32_path), str(pre), skip_symbolic_shape=True)
     quantize_static(str(pre), str(out_path), Reader(), quant_format=QuantFormat.QDQ,
                     per_channel=True)
     pre.unlink(missing_ok=True)
@@ -108,6 +109,7 @@ def export_run(model: nn.Module, cfg, out_dir: Path, int8: bool = False,
     report["max_abs_logit_diff"] = float(np.abs(ref - got).max())
     report["fp32_latency_ms"] = 1e3 * ort_latency(sess, frames)
     report["fp32_test"] = ort_evaluate(sess, ds["test"], eval_limit)
+    (out_dir / "export_report.json").write_text(json.dumps(report, indent=2))
 
     if int8:
         # calibrate on un-augmented training clips, never on the test split

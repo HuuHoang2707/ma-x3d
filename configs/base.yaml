@@ -15,6 +15,7 @@ data:
   split_seed: 0            # same validation split for every run and seed
   augment: true
   augment_multiplier: 2
+  train_span: [0.6, 1.0]   # training window = 60-100% of the stored clip (null = thesis sampler)
   rotation_deg: 10
   temporal_inverse: false
   num_workers: 12
@@ -52,9 +53,10 @@ train:
   unfreeze: [res2, res3, res5, head]
   param_match: exact
   ring_lr: new
+  head_new: proj           # only the new linear layer of the head is "new"
   freeze_bn: true
-  ema_decay: 0.0
-  cutmix_prob: 0.0
+  ema_decay: 0.999
+  cutmix_prob: 0.5
   cutmix_alpha: 1.0
   compile: false
   fast_depthwise: true

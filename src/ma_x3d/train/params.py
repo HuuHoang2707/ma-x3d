@@ -4,6 +4,10 @@ probe:    backbone frozen; head + new modules train at lr_probe.
 finetune: stages in `train.unfreeze` train at lr_backbone; the head, the new modules
           and the wide-kernel ring train at lr_new.
 
+The X3D head holds two pre-trained convolutions (about 970K parameters) before the new
+linear layer. `train.head_new="proj"` treats only that linear layer as new; the head
+convolutions then count as backbone (frozen in the probe, lr_backbone afterwards).
+
 `param_match="legacy"` reproduces the Kaggle notebook, which selected parameters by
 substring. There "blocks.5" also matched "blocks.3.res_blocks.5" (a Res4 block), and
 "blocks.1" matched "res_blocks.1" and "res_blocks.10", so several Res4/Res5 blocks
@@ -17,7 +21,7 @@ import torch.nn as nn
 from ..config import TrainConfig
 from ..models.ma_x3d import STAGES
 
-NEW_PREFIXES = ("motion_attn.", "eaa.", f"blocks.{STAGES['head']}.")
+HEAD = f"blocks.{STAGES['head']}."
 
 
 def _in_stage(name: str, stage: str) -> bool:
@@ -28,9 +32,17 @@ def _is_ring(name: str) -> bool:
     return name.endswith("delta_weight")
 
 
+def _is_new(name: str, cfg: TrainConfig) -> bool:
+    if name.startswith(("motion_attn.", "eaa.")):
+        return True
+    if name.startswith(HEAD):
+        return cfg.head_new == "all" or name.startswith(HEAD + "proj.")
+    return False
+
+
 def _exact(name: str, phase: str, cfg: TrainConfig) -> tuple[bool, bool]:
     """Return (trainable, uses the new-module learning rate)."""
-    new = name.startswith(NEW_PREFIXES)
+    new = _is_new(name, cfg)
     ring = _is_ring(name)
     if phase == "probe":
         return new, True

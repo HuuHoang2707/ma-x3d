@@ -6,9 +6,13 @@ name: legacy_thesis
 description: thesis recipe, notebook behaviour
 data:
   protocol: test_as_val
+  train_span: null          # thesis sampler (short dense training windows)
 model:
   normalize_input: false
 train:
   amp: fp16
   param_match: legacy
   freeze_bn: false
+  head_new: all
+  ema_decay: 0.0
+  cutmix_prob: 0.0
