@@ -23,6 +23,8 @@ COLUMNS = [
 def load_runs(root: str | Path) -> list[dict]:
     runs = []
     for res in sorted(Path(root).glob("**/results.json")):
+        if "_dev" in res.parts:  # development runs, not part of the tables
+            continue
         r = json.loads(res.read_text())
         cfg = yaml.safe_load((res.parent / "config.yaml").read_text())
         r["dir"] = str(res.parent)
