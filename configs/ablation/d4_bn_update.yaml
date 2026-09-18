@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: d4_bn_update
+description: BN statistics of frozen stages updated
+train:
+  freeze_bn: false

@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: e4_no_normalize
+description: no Kinetics input normalisation
+model:
+  normalize_input: false

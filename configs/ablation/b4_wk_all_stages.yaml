@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: b4_wk_all_stages
+description: WK in Res2-Res5
+model:
+  wk_stages: [res2, res3, res4, res5]

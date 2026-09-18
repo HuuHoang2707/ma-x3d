@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: a2_wk
+description: + Wide-Kernel
+model:
+  motion_attention: false

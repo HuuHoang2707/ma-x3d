@@ -1,0 +1,7 @@
+# X3D-M baseline: same data, recipe and unfrozen stages, no new modules.
+_base_: base.yaml
+name: x3d_m
+description: X3D-M baseline
+model:
+  motion_attention: false
+  wide_kernel: none

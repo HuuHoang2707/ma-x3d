@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ma-x3d"
+version = "0.1.0"
+description = "MA-X3D: a lightweight motion-attentive X3D for violence detection in surveillance video"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Nguyen Huu Hoang", email = "hoang.nh225972@sis.hust.edu.vn" }]
+# torch/torchvision are installed separately (ROCm or CUDA wheel), see `make env`.
+dependencies = [
+  "numpy",
+  "h5py",
+  "pyyaml",
+  "tqdm",
+  "matplotlib",
+  "pytorchvideo @ git+https://github.com/facebookresearch/pytorchvideo.git@f3142bb05cdb56af0704ab6f0adfb0c7bbafe4a0",
+]
+
+[project.optional-dependencies]
+# Only needed to rebuild the HDF5 files from raw RWF-2000 videos.
+preprocess = ["opencv-python-headless", "scikit-learn", "ultralytics"]
+# ONNX export and CPU inference for edge devices.
+edge = ["onnx", "onnxscript", "onnxruntime"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+ma-x3d = "ma_x3d.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "slow: builds the full X3D-M network on CPU (a few seconds each)",
+  "gpu: needs a ROCm/CUDA device",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E741"]

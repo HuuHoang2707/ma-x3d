@@ -1,0 +1,5 @@
+# MA-X3D as described in the paper: Motion Attention after Res4 + reparameterised 5x5
+# depthwise kernels in Res2 and Res3.
+_base_: base.yaml
+name: ma_x3d
+description: MA-X3D (MA + WK)

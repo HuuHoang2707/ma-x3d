@@ -1,0 +1,22 @@
+# The last Kaggle notebook (notebooks/x3dv5_kaggle.ipynb), cell by cell.
+_base_: ../base.yaml
+name: legacy_notebook_v5
+description: Kaggle notebook v5
+data:
+  protocol: test_as_val
+  frames: 32
+  augment_multiplier: 1
+model:
+  normalize_input: false
+  head_dropout: 0.3
+  eaa: true
+train:
+  epochs: 29
+  probe_epochs: 3
+  patience: 25
+  batch_size: 20
+  amp: fp16
+  param_match: legacy
+  freeze_bn: true
+  ema_decay: 0.999
+  cutmix_prob: 0.5

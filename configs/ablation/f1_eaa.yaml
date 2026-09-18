@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: f1_eaa
+description: + efficient additive attention
+model:
+  eaa: true

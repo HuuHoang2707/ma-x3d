@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: c1_ma_single_scale
+description: MA, single-step frame difference
+model:
+  motion_multiscale: false

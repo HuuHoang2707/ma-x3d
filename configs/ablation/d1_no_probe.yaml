@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: d1_no_probe
+description: no probe phase
+train:
+  probe_epochs: 0

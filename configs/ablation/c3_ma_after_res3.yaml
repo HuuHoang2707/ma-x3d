@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: c3_ma_after_res3
+description: MA after Res3
+model:
+  ma_stage: res3

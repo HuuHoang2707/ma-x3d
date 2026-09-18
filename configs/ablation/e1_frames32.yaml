@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: e1_frames32
+description: 32 frames per clip
+data:
+  frames: 32

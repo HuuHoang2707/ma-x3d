@@ -1,0 +1,60 @@
+# Shared recipe (thesis Table 4.1, with the corrections listed in README).
+# Every experiment inherits this file and changes as little as possible.
+name: base
+description: ""
+seed: 0
+output_dir: runs
+
+data:
+  root: dataset/rwf2000
+  frames_stored: 64
+  frames: 16
+  protocol: holdout        # pick checkpoint on a held-out part of train, test once
+  val_fraction: 0.1        # 80 Fight + 80 NonFight clips
+  val_blocks: 20
+  split_seed: 0            # same validation split for every run and seed
+  augment: true
+  augment_multiplier: 2
+  rotation_deg: 10
+  temporal_inverse: false
+  num_workers: 12
+
+model:
+  num_classes: 2
+  pretrained: true
+  normalize_input: true
+  head_dropout: 0.5
+  motion_attention: true
+  ma_stage: res4
+  motion_multiscale: true
+  motion_clip: 0.2
+  ma_modes: 4
+  ma_temporal_kernel: 3
+  ma_reduction: 4
+  wide_kernel: reparam
+  wk_stages: [res2, res3]
+  wk_size: 5
+  eaa: false
+
+train:
+  epochs: 24
+  probe_epochs: 4
+  patience: 6
+  batch_size: 12
+  lr_probe: 1.0e-3
+  lr_backbone: 1.0e-5
+  lr_new: 5.0e-4
+  weight_decay: 5.0e-4
+  betas: [0.9, 0.999]
+  label_smoothing: 0.1
+  grad_clip: 1.0
+  amp: bf16
+  unfreeze: [res2, res3, res5, head]
+  param_match: exact
+  ring_lr: new
+  freeze_bn: true
+  ema_decay: 0.0
+  cutmix_prob: 0.0
+  cutmix_alpha: 1.0
+  compile: false
+  fast_depthwise: true

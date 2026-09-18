@@ -1,0 +1,35 @@
+# environment
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# data, runs, weights (large, reproducible)
+dataset/
+runs/
+exports/
+*.pt
+*.pth
+*.onnx
+*.h5
+yolov8*.pt
+
+# generated figures (tables in reports/ are tracked)
+reports/figures/
+
+# LaTeX build files
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+paper/main.pdf
+
+# local tool settings
+.claude/settings.local.json
+.vscode/
+.ipynb_checkpoints/

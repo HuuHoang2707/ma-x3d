@@ -1,0 +1,6 @@
+_base_: ../base.yaml
+name: a0_x3d_m
+description: X3D-M baseline
+model:
+  motion_attention: false
+  wide_kernel: none

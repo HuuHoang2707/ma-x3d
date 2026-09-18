@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: d2_single_lr
+description: single LR (no discriminative LR)
+train:
+  lr_new: 1.0e-5

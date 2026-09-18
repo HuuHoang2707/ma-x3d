@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: d3_unfreeze_res4
+description: Res4 also fine-tuned
+train:
+  unfreeze: [res2, res3, res4, res5, head]

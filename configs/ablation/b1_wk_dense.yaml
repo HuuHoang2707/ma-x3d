@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: b1_wk_dense
+description: WK as dense 5x5 inflation
+model:
+  wide_kernel: dense

@@ -1,0 +1,14 @@
+# Best-effort reconstruction of the thesis runs (Kaggle, 2x T4), for comparison only.
+# Keeps the notebook's behaviour: substring parameter selection, checkpoint picked on
+# the test set, unnormalised input, BN statistics updated in frozen stages, fp16.
+_base_: ../base.yaml
+name: legacy_thesis
+description: thesis recipe, notebook behaviour
+data:
+  protocol: test_as_val
+model:
+  normalize_input: false
+train:
+  amp: fp16
+  param_match: legacy
+  freeze_bn: false

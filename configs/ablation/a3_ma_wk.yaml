@@ -1,0 +1,3 @@
+_base_: ../base.yaml
+name: a3_ma_wk
+description: + MA + WK (MA-X3D)

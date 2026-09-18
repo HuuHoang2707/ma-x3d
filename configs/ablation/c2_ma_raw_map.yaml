@@ -1,0 +1,5 @@
+_base_: ../base.yaml
+name: c2_ma_raw_map
+description: MA without temporal modes
+model:
+  ma_modes: 0
