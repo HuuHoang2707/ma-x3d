@@ -115,3 +115,20 @@ def test_group_kfold_keeps_groups_and_classes():
     owner = {i: k for k, f in enumerate(folds) for i in f}
     assert owner[10] == owner[11] == owner[12] and owner[150] == owner[151]
     del rng
+
+
+def test_grouped_test_split_keeps_scenes_apart(tmp_path):
+    from ma_x3d.data.audit import grouped_test_split
+
+    rng = np.random.default_rng(0)
+    base = rng.integers(0, 256, (40, 8, 3, 32, 32), dtype=np.uint8)
+    x = np.concatenate([base, base[:4]])  # clips 40-43 duplicate clips 0-3
+    y = np.array([1] * 20 + [0] * 20 + [1] * 4)
+    np.save(tmp_path / "all_x.npy", x)
+    np.save(tmp_path / "all_y.npy", y)
+    rep = grouped_test_split(tmp_path, tmp_path / "out", 0.25, seed=0)
+    assert rep["exact_duplicates_removed"] == 4
+    tr, te = rep["train_index"], rep["test_index"]
+    assert not set(tr) & set(te) and len(tr) + len(te) == 40
+    assert rep["test_fight"] == len(te) // 2  # balanced
+    assert np.load(tmp_path / "out/test_x.npy").shape == (len(te), 8, 3, 32, 32)

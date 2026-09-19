@@ -1,0 +1,6 @@
+# Hockey Fights (1,000 clips; grouped 80/20 split, 4-fold CV on train). Same recipe as on RWF-2000.
+_base_: ../exp/e05_lr_backbone5e-5.yaml
+name: hk_e05_ma_x3d
+description: Hockey, MA-X3D, recipe R1
+data:
+  root: dataset/hockey

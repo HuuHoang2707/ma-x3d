@@ -1,0 +1,8 @@
+# Hockey Fights (1,000 clips; grouped 80/20 split, 4-fold CV on train). Same recipe as on RWF-2000.
+_base_: ../exp/e11_kd_long.yaml
+name: hk_e11_ma_x3d_kd
+description: Hockey, MA-X3D, final recipe
+data:
+  root: dataset/hockey
+train:
+  distill: runs/hk_t01_videomae/seed0/fold{fold}

@@ -59,6 +59,15 @@ def cmd_build_dataset(a):
     build_dataset(a.videos, a.out, a.roi, a.device or "cuda")
 
 
+def cmd_build_clips(a):
+    from .data.audit import grouped_test_split
+    from .data.preprocess import build_clip_arrays
+
+    build_clip_arrays({1: a.fight, 0: a.nonfight}, a.all_dir, a.roi, a.workers)
+    rep = grouped_test_split(a.all_dir, a.out, a.test_fraction, a.seed)
+    print(json.dumps({k: v for k, v in rep.items() if not k.endswith("_index")}, indent=2))
+
+
 def cmd_train(a):
     from .config import load_config
     from .train.engine import train
@@ -312,6 +321,18 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--roi", default="cluster", choices=["cluster", "union", "none"])
     s.add_argument("--device")
     s.set_defaults(fn=cmd_build_dataset)
+
+    s = sub.add_parser("build-clips", help="videos without an official split -> grouped "
+                       "train/test arrays (needs [preprocess]); run `audit` afterwards")
+    s.add_argument("--fight", required=True, help="folder of violent videos")
+    s.add_argument("--nonfight", required=True, help="folder of non-violent videos")
+    s.add_argument("--all-dir", required=True, help="where all_x.npy is written")
+    s.add_argument("--out", required=True, help="dataset root with train_x.npy / test_x.npy")
+    s.add_argument("--roi", default="cluster", choices=["cluster", "union", "none"])
+    s.add_argument("--workers", type=int, default=16)
+    s.add_argument("--test-fraction", type=float, default=0.2)
+    s.add_argument("--seed", type=int, default=0)
+    s.set_defaults(fn=cmd_build_clips)
 
     s = sub.add_parser("train", help="train one config")
     s.add_argument("config")

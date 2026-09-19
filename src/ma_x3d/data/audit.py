@@ -79,3 +79,44 @@ def audit(root: str | Path, dup_cos: float = 0.99, scene_cos: float = 0.9) -> di
     np.save(root / "train_exclude.npy", exclude)
     (root / "audit.json").write_text(json.dumps(report, indent=2))
     return report
+
+
+def grouped_test_split(src: str | Path, out: str | Path, test_fraction: float = 0.2,
+                       seed: int = 0, dup_cos: float = 0.99, scene_cos: float = 0.9) -> dict:
+    """For datasets without an official split: all_x.npy -> train/test arrays.
+
+    Exact duplicates are removed (one copy kept), same-scene clips are grouped, and the
+    test set is drawn by whole groups with both classes balanced, so no scene appears
+    on both sides. Writes out/{train,test}_{x,y}.npy and out/split.json.
+    """
+    from .splits import group_kfold
+
+    src, out = Path(src), Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    y = np.load(src / "all_y.npy")
+    bad = np.load(src / "bad.npy") if (src / "bad.npy").exists() else np.zeros(len(y), bool)
+    d = descriptors(src / "all_x.npy")
+    s = (d @ d.T).numpy()
+    np.fill_diagonal(s, -1)
+    ii, jj = np.where(np.triu(s >= scene_cos))
+    groups = _components(len(y), list(zip(ii.tolist(), jj.tolist(), strict=True)))
+    second = {int(j) for i, j in zip(ii, jj, strict=True) if s[i, j] >= dup_cos}
+    keep = np.array([i for i in range(len(y)) if i not in second and not bad[i]])
+    folds = group_kfold(y, groups, round(1 / test_fraction), seed, keep)
+    test = folds[0]
+    train = np.sort(np.setdiff1d(keep, test))
+    x = np.load(src / "all_x.npy", mmap_mode="r")
+    for name, idx in (("train", train), ("test", test)):
+        arr = np.lib.format.open_memmap(out / f"{name}_x.npy", mode="w+", dtype=np.uint8,
+                                        shape=(len(idx), *x.shape[1:]))
+        for k, i in enumerate(idx):
+            arr[k] = x[i]
+        arr.flush()
+        np.save(out / f"{name}_y.npy", y[idx])
+    report = {"clips": int(len(y)), "unreadable": int(bad.sum()),
+              "exact_duplicates_removed": len(second), "same_scene_pairs": int(len(ii)),
+              "groups": int(groups.max() + 1), "train": int(len(train)), "test": int(len(test)),
+              "train_fight": int(y[train].sum()), "test_fight": int(y[test].sum()),
+              "train_index": train.tolist(), "test_index": test.tolist()}
+    (out / "split.json").write_text(json.dumps(report))
+    return report

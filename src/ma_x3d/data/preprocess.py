@@ -144,3 +144,64 @@ def build_dataset(videos_root: str | Path, out_dir: str | Path, roi: str = "clus
     for split in ("train", "val"):
         build_split(Path(videos_root) / split, out_dir / f"rwf2000_{split}{suffix}.h5", detector,
                     roi=roi)
+
+
+_DETECTOR = None
+
+
+def _clip_array(args) -> np.ndarray | None:
+    """One video -> [n, 3, size, size] uint8 (worker process, CPU detector)."""
+    import cv2
+    import torch
+
+    global _DETECTOR
+    path, roi, n, size, window_s = args
+    torch.set_num_threads(2)  # NMS has a time limit; one thread can hit it under load
+    cv2.setNumThreads(1)
+    if _DETECTOR is None:
+        from ultralytics import YOLO
+
+        _DETECTOR = YOLO("yolov8n.pt")
+    frames = extract_frames(path, n, window_s)
+    if frames is None:
+        return None
+    x1, y1, x2, y2 = person_roi(frames, _DETECTOR, mode=roi)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    out = []
+    for f in frames:
+        crop = f[y1:y2, x1:x2]
+        crop = f if crop.size == 0 else crop
+        out.append(cv2.resize(enhance(crop, clahe), (size, size)).transpose(2, 0, 1))
+    return np.stack(out)
+
+
+def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
+                      roi: str = "cluster", workers: int = 16, n: int = 64, size: int = 224,
+                      window_s: float | None = 5.0) -> None:
+    """Videos in {label: folder} -> out_dir/all_x.npy [N, n, 3, size, size], all_y.npy,
+    names.txt, bad.npy (videos that could not be read). Same processing as build_split,
+    run in parallel on CPU."""
+    from multiprocessing import get_context
+
+    from ultralytics import YOLO
+
+    YOLO("yolov8n.pt")  # download once before the workers start
+    videos = [(str(p), label) for label, d in sorted(class_dirs.items(), reverse=True)
+              for p in sorted(Path(d).iterdir()) if p.suffix.lower() in (".mp4", ".avi")]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    x = np.lib.format.open_memmap(out_dir / "all_x.npy", mode="w+", dtype=np.uint8,
+                                  shape=(len(videos), n, 3, size, size))
+    bad = np.zeros(len(videos), dtype=bool)
+    jobs = [(p, roi, n, size, window_s) for p, _ in videos]
+    with get_context("spawn").Pool(workers) as pool:
+        for i, arr in enumerate(tqdm(pool.imap(_clip_array, jobs, chunksize=2),
+                                     total=len(jobs), desc="clips")):
+            if arr is None:
+                bad[i] = True
+            else:
+                x[i] = arr
+    x.flush()
+    np.save(out_dir / "all_y.npy", np.array([label for _, label in videos], dtype=np.int64))
+    np.save(out_dir / "bad.npy", bad)
+    (out_dir / "names.txt").write_text("\n".join(Path(p).name for p, _ in videos))
