@@ -161,3 +161,31 @@ def format_cv(res: dict) -> str:
             f"{t['precision']:5.3f} {t['recall']:5.3f} {t['f1']:5.3f} {t['auc']:5.3f} | "
             f"{sm['accuracy']:.4f} ± {ss['accuracy']:.4f}")
     return "\n".join(lines)
+
+
+def experiment_table(exp_dirs: list[str | Path], variant: str = "1clip") -> str:
+    """Markdown table over experiments: OOF metrics (used for decisions) and the fold
+    ensemble on test (reported, never used for decisions)."""
+    import yaml
+
+    head = ("| Experiment | Change | Variant | OOF Acc | OOF P | OOF R | OOF F1 | th | "
+            "Test Acc | Test P | Test R | Test F1 | Test AUC |")
+    lines = [head, "|" + " --- |" * (head.count("|") - 1)]
+    for d in exp_dirs:
+        d = Path(d)
+        f = d / "cv_eval.json"
+        if not f.exists():
+            continue
+        res = json.loads(f.read_text())
+        v = variant
+        if v == "best":  # best variant by OOF accuracy at the OOF threshold
+            v = max(res["variants"], key=lambda k: res["variants"][k]["oof@th"]["accuracy"])
+        r = res["variants"][v]
+        cfg = yaml.safe_load(next(d.glob("fold*/config.yaml")).read_text())
+        o, t = r["oof@th"], r["test_ensemble@th"]
+        lines.append(
+            f"| {cfg['name']} | {cfg.get('description', '')} | {v} | {100 * o['accuracy']:.2f} | "
+            f"{o['precision']:.3f} | {o['recall']:.3f} | {o['f1']:.3f} | {r['threshold']:.2f} | "
+            f"{100 * t['accuracy']:.2f} | {t['precision']:.3f} | {t['recall']:.3f} | "
+            f"{t['f1']:.3f} | {t['auc']:.3f} |")
+    return "\n".join(lines)

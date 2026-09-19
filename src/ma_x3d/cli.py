@@ -172,28 +172,60 @@ def cmd_export(a):
 
 
 def cmd_cv(a):
-    from .eval.cv import evaluate_cv, format_cv
+    from .eval.cv import evaluate_cv, experiment_table, format_cv
 
+    if a.table:
+        print(experiment_table(a.exp, a.table))
+        return
     for d in a.exp:
         print(format_cv(evaluate_cv(d, _device(a.device), a.variants, a.key)))
         print()
 
 
-def _free_gpus(exclude: set[int], max_mem_pct: int = 15, max_use_pct: int = 20) -> list[int]:
-    """GPUs whose memory and compute use are low right now (shared node)."""
-    out = subprocess.run(["rocm-smi", "--showmemuse", "--showuse"], capture_output=True,
-                         text=True).stdout
-    mem, use = {}, {}
+def _smi_status() -> dict[int, dict]:
+    """rocm-smi view: {smi_id: {bus, mem, use}}."""
+    out = subprocess.run(["rocm-smi", "--showmemuse", "--showuse", "--showbus"],
+                         capture_output=True, text=True).stdout
+    info: dict[int, dict] = {}
     for line in out.splitlines():
-        if line.startswith("GPU[") and ":" in line:
-            gpu = int(line[4 : line.index("]")])
-            val = line.rsplit(":", 1)[1].strip()
-            if "VRAM%" in line and val.isdigit():
-                mem[gpu] = int(val)
-            elif "GPU use (%)" in line and val.isdigit():
-                use[gpu] = int(val)
-    return [g for g in sorted(mem) if g not in exclude and mem[g] <= max_mem_pct
-            and use.get(g, 0) <= max_use_pct]
+        if not (line.startswith("GPU[") and ":" in line):
+            continue
+        gpu = int(line[4 : line.index("]")])
+        val = line.rsplit(": ", 1)[1].strip()
+        d = info.setdefault(gpu, {})
+        if "VRAM%" in line and val.isdigit():
+            d["mem"] = int(val)
+        elif "GPU use (%)" in line and val.isdigit():
+            d["use"] = int(val)
+        elif "PCI Bus" in line:
+            d["bus"] = int(val.split(":")[1], 16)
+    return info
+
+
+def _hip_ids() -> dict[int, int]:
+    """smi_id -> HIP id. On this node the two numberings differ (matched by PCI bus)."""
+    code = ("import torch; print(*[torch.cuda.get_device_properties(i).pci_bus_id "
+            "for i in range(torch.cuda.device_count())])")
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    buses = [int(b) for b in out.stdout.split()]
+    by_bus = {bus: hip for hip, bus in enumerate(buses)}
+    return {smi: by_bus[d["bus"]] for smi, d in _smi_status().items() if d.get("bus") in by_bus}
+
+
+def _free_gpus(exclude: set[int], hip_of: dict[int, int], max_mem_pct: int = 5) -> list[int]:
+    """HIP ids of GPUs with (almost) no memory allocated by anyone."""
+    return [hip_of[smi] for smi, d in sorted(_smi_status().items())
+            if smi in hip_of and hip_of[smi] not in exclude and d.get("mem", 100) <= max_mem_pct]
+
+
+def cmd_gpus(a):
+    hip_of = _hip_ids()
+    print("HIP_VISIBLE_DEVICES id | rocm-smi id | memory % | use %")
+    for smi, d in sorted(_smi_status().items()):
+        print(f"{hip_of.get(smi, '?'):>22} | {smi:>11} | {d.get('mem', '?'):>8} | "
+              f"{d.get('use', '?'):>5}")
 
 
 def cmd_sweep(a):
@@ -206,6 +238,7 @@ def cmd_sweep(a):
     jobs = [(c, s, f) for c in a.configs for s in a.seeds for f in folds]
     auto = a.gpus == ["auto"]
     free = [] if auto else [int(g) for g in a.gpus]
+    hip_of = _hip_ids() if auto else {}
     running = []
     log_dir = Path(a.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -213,7 +246,7 @@ def cmd_sweep(a):
     while jobs or running:
         if auto:
             busy = {j[1] for j in running}
-            free = _free_gpus(busy)
+            free = _free_gpus(busy, hip_of)
         while jobs and free:
             cfg, seed, fold = jobs.pop(0)
             gpu = free.pop(0)
@@ -318,10 +351,15 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--threads", type=int, default=0, help="ONNX Runtime threads (0 = all)")
     s.set_defaults(fn=cmd_export)
 
+    s = sub.add_parser("gpus", help="free GPUs, with HIP ids (use these) and rocm-smi ids")
+    s.set_defaults(fn=cmd_gpus)
+
     s = sub.add_parser("cv", help="K-fold evaluation: OOF metrics, threshold, TTA, ensemble")
     s.add_argument("exp", nargs="+", help="runs/<name>/seed0 folders holding fold*/")
     s.add_argument("--variants", nargs="+", help="inference variants (default: all)")
     s.add_argument("--key", default="accuracy", help="OOF metric for the threshold")
+    s.add_argument("--table", metavar="VARIANT",
+                   help="only print the experiment table (a variant name, or best)")
     s.add_argument("--device")
     s.set_defaults(fn=cmd_cv)
 
