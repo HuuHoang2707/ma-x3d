@@ -1,0 +1,5 @@
+_base_: e05_lr_backbone5e-5.yaml
+name: e14_lr5e-5_unfreeze_res4
+description: lr 5e-5 + Res4 also fine-tuned
+train:
+  unfreeze: [res2, res3, res4, res5, head]

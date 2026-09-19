@@ -1,0 +1,5 @@
+_base_: e05_lr_backbone5e-5.yaml
+name: e15_lr5e-5_no_cutmix
+description: lr 5e-5 + CutMix off
+train:
+  cutmix_prob: 0.0

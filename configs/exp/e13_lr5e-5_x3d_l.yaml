@@ -1,0 +1,5 @@
+_base_: e05_lr_backbone5e-5.yaml
+name: e13_lr5e-5_x3d_l
+description: lr 5e-5 + X3D-L backbone
+model:
+  backbone: x3d_l
