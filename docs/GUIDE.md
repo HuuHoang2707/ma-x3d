@@ -186,6 +186,75 @@ writes
 - `reports/ablation_rows.tex`: LaTeX rows for the paper's tables;
 - `runs/<name>/seed<N>/curves.png`: loss, accuracy and F1 per epoch.
 
+## 8b. How to improve the model
+
+### Rules
+
+1. **Decide on validation, never on test.** Keep `data.protocol: holdout`. Compare
+   runs by validation F1 and validation loss. Look at the test score only for the final
+   configuration. Choosing on test is how the Kaggle 90.5% happened.
+2. **Change one thing at a time**, so you know what caused a difference.
+3. **Screen with 1 seed, confirm with 3.** On 400 test clips, one clip is 0.25 points,
+   and seeds differ by 1-3 points. A gap smaller than the std over seeds is noise.
+4. **Commit before a sweep.** Each run records the commit in `env.json`.
+
+### The loop
+
+```bash
+# 1. make an experiment: copy a config, give it a new name, change one key
+cp configs/ma_x3d.yaml configs/tune/t01_lr_new_2e4.yaml   # edit: name + the one change
+# or without a file:
+... train configs/ma_x3d.yaml --set name=t01_lr_new_2e4 train.lr_new=2e-4
+
+# 2. screen: 1 seed (16 frames: one run per GPU)
+.venv/bin/python -m ma_x3d.cli sweep --seeds 0 --gpus 4 5 6 7 \
+    --configs configs/tune/t01_*.yaml configs/tune/t02_*.yaml configs/tune/t03_*.yaml
+
+# 3. look at the curves and the table
+make report          # reports/summary.md; curves in runs/<name>/seed0/curves.png
+
+# 4. confirm the best one or two with seeds 1 and 2, then compare mean +- std
+```
+
+### Reading the curves (`curves.png`)
+
+| What you see | Meaning | Try |
+| --- | --- | --- |
+| val loss rises while train loss falls; train acc >> val acc | overfitting | `ema_decay: 0.999`, `cutmix_prob: 0.5`, `head_new: proj`, lower `lr_new`, higher `weight_decay` |
+| val loss rises from epoch 1-2 even in the probe | train and val data differ | check sampling (`train_span`), frames, augmentation |
+| train and val both flat, train acc low | underfitting | more epochs, higher `lr_new`, add `res4` to `unfreeze`, less augmentation |
+| val F1 jumps up and down by several points | small val set, noise | trust val loss more, use 3 seeds |
+| best epoch is in the probe phase | fine-tuning hurts | lower `lr_new` / `lr_backbone`, more regularisation |
+
+### Knobs that mattered so far (seed 0, RWF-2000)
+
+| Change | Effect seen |
+| --- | --- |
+| 32 frames instead of 16 (notebook v5 setup) | best result so far: 88.75% test, val loss 0.40 and still falling |
+| `train_span: [0.6, 1.0]` (training window matches evaluation) | removed the early val-loss rise; the wide kernel started to be used |
+| EMA 0.999 + CutMix 0.5 | val loss flat instead of rising; alone, each helped less |
+| `head_new: proj` | small gain on top of EMA + CutMix |
+| weight decay 0.05, lower head LR, BN updates, no normalisation | no clear gain |
+
+Good next experiments: the new recipe at 32 frames
+(`configs/ablation/e1_frames32.yaml`), and the notebook-v5 setup with
+`--set data.protocol=holdout` so its number is valid for the paper.
+
+### Making runs faster
+
+- 16 frames: one run per GPU with `sweep`. 4 GPUs = 4 experiments at once.
+- 32 frames: one run on 4 GPUs with `make train-ddp` (about 3x faster per run).
+- Keep `train.fast_depthwise: true` (Triton kernels, 2.3x faster steps).
+- A run is data-bound if the GPU use in `rocm-smi --showuse` stays low: raise
+  `data.num_workers`.
+- `data.augment_multiplier: 1` halves the epoch time for quick screening.
+
+### Final numbers for the paper
+
+Pick the configuration by validation, then run it with 3 (or 5) seeds and report
+test mean +- std from `reports/summary.md`. Run the baseline and every ablation row
+the same way.
+
 ## 9. Cost and figures
 
 ```bash
