@@ -1,0 +1,5 @@
+_base_: e11_kd_long.yaml
+name: p4_wk_dense
+description: final recipe, WK as dense 5x5 inflation
+model:
+  wide_kernel: dense

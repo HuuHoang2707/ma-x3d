@@ -1,0 +1,7 @@
+# Table II: final recipe (e11_kd_long), one model change per row. Full model = e11.
+_base_: e11_kd_long.yaml
+name: p0_x3d_m
+description: final recipe, X3D-M (no MA, no WK)
+model:
+  motion_attention: false
+  wide_kernel: none
