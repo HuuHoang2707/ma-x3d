@@ -1,0 +1,5 @@
+_base_: e00_baseline.yaml
+name: e06_no_cutmix
+description: CutMix off
+train:
+  cutmix_prob: 0.0

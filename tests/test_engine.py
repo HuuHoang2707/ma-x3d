@@ -17,7 +17,7 @@ pytestmark = pytest.mark.slow
 def test_train_evaluate_report(tmp_path, monkeypatch, x3d_blocks):
     from ma_x3d.models import builder
 
-    monkeypatch.setattr(builder, "x3d_m_blocks", lambda *a: copy.deepcopy(x3d_blocks))
+    monkeypatch.setattr(builder, "x3d_blocks", lambda *a: copy.deepcopy(x3d_blocks))
     root = write_arrays(tmp_path / "data", n_train=8, n_test=4, frames=16)
     cfg = load_config(overrides=[
         f"data.root={root}", f"output_dir={tmp_path / 'runs'}", "name=smoke",

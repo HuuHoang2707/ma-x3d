@@ -22,6 +22,7 @@ data:
 
 model:
   num_classes: 2
+  backbone: x3d_m          # x3d_m | x3d_l (Kinetics-400, pytorchvideo)
   pretrained: true
   normalize_input: true
   head_dropout: 0.5

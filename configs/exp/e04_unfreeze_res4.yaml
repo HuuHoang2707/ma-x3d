@@ -1,0 +1,5 @@
+_base_: e00_baseline.yaml
+name: e04_unfreeze_res4
+description: Res4 also fine-tuned
+train:
+  unfreeze: [res2, res3, res4, res5, head]

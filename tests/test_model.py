@@ -114,7 +114,7 @@ def test_legacy_matching_reproduces_notebook_leak(x3d_blocks):
 def test_build_model_uses_config(monkeypatch, x3d_blocks):
     from ma_x3d.models import builder
 
-    monkeypatch.setattr(builder, "x3d_m_blocks", lambda *a: copy.deepcopy(x3d_blocks))
+    monkeypatch.setattr(builder, "x3d_blocks", lambda *a: copy.deepcopy(x3d_blocks))
     m = builder.build_model(ModelConfig(ma_stage="res3", wide_kernel="dense"))
     assert m.motion_attn.gate[2].out_channels == 48
     assert m.blocks[1].res_blocks[0].branch2.conv_b.kernel_size == (3, 5, 5)

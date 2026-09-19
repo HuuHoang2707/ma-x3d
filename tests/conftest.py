@@ -26,6 +26,6 @@ def small_arrays(tmp_path) -> Path:
 @pytest.fixture(scope="session")
 def x3d_blocks():
     """Randomly initialised X3D-M (no download), built once per session."""
-    from ma_x3d.models.builder import x3d_m_blocks
+    from ma_x3d.models.builder import x3d_blocks
 
-    return x3d_m_blocks(pretrained=False, num_classes=2, head_dropout=0.5)
+    return x3d_blocks(pretrained=False, num_classes=2, head_dropout=0.5)

@@ -1,0 +1,5 @@
+_base_: e00_baseline.yaml
+name: e07_x3d_l
+description: X3D-L backbone
+model:
+  backbone: x3d_l

@@ -43,6 +43,7 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     num_classes: int = 2
+    backbone: str = "x3d_m"  # x3d_m | x3d_l
     pretrained: bool = True
     normalize_input: bool = True  # Kinetics mean/std; the notebook fed raw [0, 1] frames
     head_dropout: float = 0.5

@@ -1,0 +1,8 @@
+# The Kaggle notebook-v5 recipe (32 frames, EAA, EMA, CutMix, thesis sampler, legacy
+# parameter groups, no input normalisation) under the same grouped 4-fold CV.
+_base_: ../legacy/notebook_v5.yaml
+name: e03_notebook_v5
+description: notebook v5 recipe
+data:
+  protocol: kfold
+  exclude_duplicates: true

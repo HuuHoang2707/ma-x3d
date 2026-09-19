@@ -1,0 +1,5 @@
+_base_: e00_baseline.yaml
+name: e05_lr_backbone5e-5
+description: backbone lr 1e-5 -> 5e-5
+train:
+  lr_backbone: 5.0e-5
