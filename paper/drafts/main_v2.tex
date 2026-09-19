@@ -53,7 +53,7 @@ test split is used once. Under this protocol a single MA-X3D model with
 3.0M parameters and 5.5 GFLOPs reaches 87.6\% accuracy and 0.875 F1 on the
 test split, compared with 86.1\% for conventional fine-tuning of the same
 network and 91.2\% for the teacher, which is 29 times larger.
-% TODO: one sentence on the component ablation (Table III) once it is complete.
+% TODO: one sentence on Tables IV-V (modules vs controls) once they are complete.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -583,7 +583,9 @@ stated, with its cost.
 % TODO: 3 seeds x 4 folds once the runs finish; state "mean +- std over 12 models".
 
 \textbf{Metrics and cost.} We report accuracy, and precision, recall and F1
-of the violent class, and ROC-AUC. Cost is measured as parameters after
+of the violent class, and ROC-AUC. Differences between two models are tested
+with the exact McNemar test on their paired OOF predictions and reported
+with 95\% bootstrap intervals over clips. Cost is measured as parameters after
 fusion, GFLOPs per view at $16\times224\times224$ (fvcore), latency and
 throughput on one AMD MI250 GCD, CPU latency on an AMD EPYC 7413 with 16
 threads, and training time and peak memory.
@@ -667,82 +669,136 @@ since this multiplies the cost by 16, we do not use it as our main result.
   % TODO: 3-seed values.
 \end{table}
 
-\subsection{Components}
+\subsection{Where does the improvement come from?}
+\label{sec:ablation}
 
-Table~\ref{tab:ablation} removes or changes one component at a time under
-the final training recipe. Zeroing the learned ring of the full model at
-test time, with the same weights, lowers single-model accuracy from 87.6\%
-to 80.6\%; the mean ring energy (share of the kernel norm on the 16 outer
-positions) is 0.30. The network therefore relies on the added spatial
-support.
-% TODO: describe rows p0-p5 once they finish: effect of MA alone, WK alone,
-% dense inflation vs reparameterisation, ring at the backbone rate.
+The comparison with conventional fine-tuning mixes two changes, the
+network and the training recipe. We separate them with three groups of
+experiments, each of which changes one factor. Every comparison is paired:
+the two models are trained on the same folds and evaluated on the same
+clips. We report the difference in OOF accuracy over the 1{,}583 clips with
+a 95\% bootstrap interval, the exact McNemar test on the paired OOF
+predictions, and the mean difference of the single fold models on the test
+split. Rows with three seeds report the mean over the 12 fold models.
+% TODO: 3-seed values for every row marked [s0].
+
+\textbf{Network and recipe (Table~\ref{tab:factorial}).} X3D-M and MA-X3D
+are each trained with the conventional recipe and with the final recipe.
+If the modules only helped because of the recipe, or the recipe only
+because of the modules, the gains would not appear in both columns.
+% TODO: fill Table IV from q0 (X3D-M conventional), e00, p0, e11 (3 seeds each) and
+% describe: gain of the modules under each recipe, gain of the recipe for each network.
 
 \begin{table}[t]
   \centering
-  \caption{Component ablation under the final recipe. OOF accuracy and F1
-  over 1{,}583 clips; test accuracy of a single model (1 view).}
-  \label{tab:ablation}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lcccc}
+  \caption{Network $\times$ training recipe (1 view). OOF accuracy over
+  1{,}583 clips / single-model test accuracy, mean over seeds and folds.}
+  \label{tab:factorial}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lcc}
     \toprule
-    Model & Params & OOF Acc & OOF F1 & Test Acc \\
+    & Conventional recipe & Final recipe \\
     \midrule
-    X3D-M                         & 2.98M & -- & -- & -- \\ % TODO p0
-    + Motion Attention            & 2.98M & -- & -- & -- \\ % TODO p1
-    + Wide kernel                 & 3.01M & -- & -- & -- \\ % TODO p2
-    + both (MA-X3D)               & 3.01M & 91.03 & 0.912 & 87.6 \\
-    \midrule
-    Wide kernel as dense $5\times5$ & 3.01M & -- & -- & -- \\ % TODO p4
-    Ring at backbone rate           & 3.01M & -- & -- & -- \\ % TODO p5
+    X3D-M   & -- / --          & -- / -- \\ % TODO q0 | p0
+    MA-X3D  & 88.44 / 86.1     & 91.03 / 87.6 \\ % [s0] e00 | e11
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsection{Training recipe}
-
-Table~\ref{tab:recipe} changes the training procedure one step at a time
-for the same network. Raising the backbone learning rate from $10^{-5}$ to
-$5\times10^{-5}$ gives the largest test gain (86.1\% to 87.7\%); with the
-lower rate the training accuracy stayed below the validation accuracy,
-and most folds stopped early, which suggests that the backbone was not
-adapting enough. Distillation with the
-standard 24-epoch schedule does not change OOF accuracy. With a 48-epoch
-schedule it adds 1.2 OOF points, and the selected epochs move from 9--20
-(R0) to 20--45. On the test split the single-model difference between R1 and R3 is
-within one standard deviation.
-% TODO: revisit this sentence with 3 seeds.
-
-The lower part of the table lists changes that were tried and not adopted
-because they did not improve OOF accuracy over the final recipe or cost
-more: a larger distillation weight, a higher backbone rate, fine-tuning
-Res4, the deeper X3D-L backbone (5.4M parameters), and 32 frames per clip
-(10.9 GFLOPs).
+\textbf{Components and controls (Table~\ref{tab:ablation}).} Under the
+final recipe we add each module to X3D-M alone, and we compare each module
+with a control that has the same parameters and cost but lacks the
+property we attribute the gain to. For Motion Attention, the control keeps
+the gate but feeds it an all-zero motion map, so any gain of the control
+comes from the extra gating parameters rather than from motion. For the
+wide kernel, the first control inflates the kernel to a dense $5\times5$
+tensor with a zero ring, so the ring shares the backbone learning rate; the
+second keeps the reparameterisation but places the ring in the backbone
+group. A third check needs no training: we set the learned ring of the
+full model to zero at test time. This lowers single-model accuracy from
+87.6\% to 80.6\%; the ring carries 30\% of the kernel magnitude (mean over
+the eight widened convolutions), so the trained network relies on the added
+spatial support.
+% TODO: describe p0, p1, p2, p6, p4, p5 with differences, intervals and p-values.
 
 \begin{table}[t]
   \centering
-  \caption{Training recipe, one change at a time (same network, 1 view,
-  threshold 0.5). Test: single model, mean $\pm$ std over the fold models.}
+  \caption{Components and controls under the final recipe (1 view).
+  $\Delta$: OOF accuracy difference to X3D-M with 95\% bootstrap interval;
+  $p$: exact McNemar test against X3D-M on the OOF predictions.}
+  \label{tab:ablation}
+  \setlength{\tabcolsep}{2pt}
+  \begin{tabular}{lccccc}
+    \toprule
+    Model & Params & OOF Acc & $\Delta$ & $p$ & Test Acc \\
+    \midrule
+    X3D-M                              & 2.98M & -- & -- & -- & -- \\ % TODO p0
+    + MA                               & 2.98M & -- & -- & -- & -- \\ % TODO p1
+    + MA, motion map set to zero       & 2.98M & -- & -- & -- & -- \\ % TODO p6
+    + WK                               & 3.01M & -- & -- & -- & -- \\ % TODO p2
+    + WK, dense $5\times5$             & 3.01M & -- & -- & -- & -- \\ % TODO p4
+    + WK, ring at backbone rate        & 3.01M & -- & -- & -- & -- \\ % TODO p5
+    + MA + WK (MA-X3D)                 & 3.01M & 91.03 & -- & -- & 87.6 \\ % [s0]
+    \quad ring set to zero at test     & 3.01M & -- & -- & -- & 80.6 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Training recipe (Table~\ref{tab:recipe}).} For the same network we
+change the recipe one step at a time. Raising the backbone learning rate
+from $10^{-5}$ to $5\times10^{-5}$ adds 1.26 OOF points ($[+0.13, +2.40]$,
+$p=0.040$) and 1.6 points on the test split: with the lower rate, training
+accuracy stayed below validation accuracy and most folds stopped early,
+which suggests that the backbone was not adapting enough. Distillation with
+the conventional 24-epoch schedule leaves OOF accuracy unchanged. With 48
+epochs it adds 1.33 OOF points over R1 ($[+0.32, +2.34]$, $p=0.015$), and
+the selected epochs move from 9--20 to 20--45. Because R3 differs from R1
+in both the teacher and the schedule length, the control R1$'$ trains for
+48 epochs without the teacher; the effect of distillation is the
+difference between R3 and R1$'$. On the test split, the single-model
+difference between R3 and R1 is $-0.06 \pm 0.67$ points, so the OOF gain of
+distillation is not visible there at this sample size.
+% TODO: e19 (R1') and 3 seeds; rewrite the last two sentences accordingly.
+
+The lower part of Table~\ref{tab:recipe} lists changes that were tried and
+not adopted because they did not improve OOF accuracy over the final recipe
+or cost more: a larger distillation weight, a higher backbone rate,
+fine-tuning Res4 ($+0.82$ OOF points over R1, $p=0.17$), the deeper X3D-L
+backbone (5.4M parameters), and 32 frames per clip (10.9 GFLOPs).
+
+\begin{table}[t]
+  \centering
+  \caption{Training recipe for the same network (MA-X3D, 1 view, threshold
+  0.5). $p$: McNemar test against the row above on the OOF predictions.
+  Test: single model, mean $\pm$ std over the fold models.}
   \label{tab:recipe}
-  \setlength{\tabcolsep}{2.5pt}
+  \setlength{\tabcolsep}{2pt}
   \begin{tabular}{llccc}
     \toprule
-    & Change & OOF Acc & OOF F1 & Test Acc \\
+    & Recipe & OOF Acc & $p$ & Test Acc \\
     \midrule
-    R0 & standard fine-tuning (lr $10^{-5}$, 24 ep.) & 88.44 & 0.885 & 86.1 $\pm$ 1.0 \\
-    R1 & backbone lr $5\times10^{-5}$               & 89.70 & 0.899 & 87.7 $\pm$ 0.9 \\
-    R2 & R1 + distillation, 24 ep.                  & 89.83 & 0.900 & 87.2 $\pm$ 0.8 \\
-    R3 & R1 + distillation, 48 ep. (final)          & 91.03 & 0.912 & 87.6 $\pm$ 0.7 \\
+    R0 & conventional (lr $10^{-5}$, 24 ep.)        & 88.44 & --    & 86.1 $\pm$ 1.0 \\
+    R1 & backbone lr $5\times10^{-5}$               & 89.70 & 0.040 & 87.7 $\pm$ 0.9 \\
+    R1$'$ & R1, 48 ep., no teacher                  & --    & --    & -- \\ % TODO e19
+    R2 & R1 + distillation, 24 ep.                  & 89.83 & --    & 87.2 $\pm$ 0.8 \\
+    R3 & R1 + distillation, 48 ep. (final)          & 91.03 & 0.015 & 87.6 $\pm$ 0.7 \\
     \midrule
-    & R2 with $\alpha = 0.9$                        & 90.27 & 0.905 & 88.1 $\pm$ 0.5 \\
-    & R1 with lr $10^{-4}$                          & 89.89 & 0.901 & 87.4 $\pm$ 1.1 \\
-    & R1 + Res4 fine-tuned                          & 90.52 & 0.906 & 88.2 $\pm$ 0.7 \\
-    & R1 with X3D-L backbone                        & 89.83 & 0.900 & 87.2 $\pm$ 0.5 \\
-    & R0 with 32 frames                             & 88.76 & 0.881 & 85.8 $\pm$ 2.6 \\
+    & R2 with $\alpha = 0.9$                        & 90.27 & --    & 88.1 $\pm$ 0.5 \\
+    & R1 with lr $10^{-4}$                          & 89.89 & --    & 87.4 $\pm$ 1.1 \\
+    & R1 + Res4 fine-tuned                          & 90.52 & 0.17  & 88.2 $\pm$ 0.7 \\
+    & R1 with X3D-L backbone                        & 89.83 & --    & 87.2 $\pm$ 0.5 \\
+    & R0 with 32 frames                             & 88.76 & --    & 85.8 $\pm$ 2.6 \\
     \bottomrule
   \end{tabular}
-  % TODO: E16 (96 epochs), E17 (48 ep., alpha 0.9), E18 (48 ep. + Res4).
+  % p for R3 is against R1 (R2 is shown for reference). TODO: 3 seeds;
+  % add e16 (96 ep.), e17 (48 ep., alpha 0.9), e18 (48 ep. + Res4) if they change a decision.
 \end{table}
+
+\subsection{Motion Attention design}
+
+% TODO (seed 0, final recipe): one step only (p7), raw map without temporal modes
+% (p8), gate after Res3 (p9) and after Res5 (p10), each against MA-X3D with the
+% McNemar test. Keep as a short table or two sentences, depending on space.
 
 \subsection{Inference options}
 \label{sec:options}

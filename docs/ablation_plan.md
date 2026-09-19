@@ -1,5 +1,66 @@
 # MA-X3D ablation plan (RWF-2000)
 
+## Version 2: final recipe, grouped 4-fold CV (current)
+
+Goal: show that each gain comes from the component we claim, not from extra
+parameters, a longer schedule, or the teacher. Every row is one config in
+`configs/exp/`, trained on the same 4 folds; decisions use the 1,583 out-of-fold
+(OOF) predictions; the test split is scored once.
+
+Statistics for every comparison (`ma-x3d cv --compare 1clip <A> <B>`): OOF accuracy
+difference with a 95% bootstrap interval, exact McNemar test on the paired OOF
+predictions, and the mean difference of the single fold models on the test split.
+
+### 1. Network x recipe (2 x 2, 3 seeds)
+
+| | Conventional recipe | Final recipe |
+| --- | --- | --- |
+| X3D-M | `q0_x3d_m_conventional` | `p0_x3d_m` |
+| MA-X3D | `e00_baseline` | `e11_kd_long` |
+
+Shows that the modules help under both recipes and the recipe helps both networks.
+
+### 2. Components and controls (final recipe)
+
+| Row | Config | Question |
+| --- | --- | --- |
+| X3D-M | `p0_x3d_m` | reference |
+| + MA | `p1_ma` | gain of Motion Attention alone |
+| + MA, zero motion | `p6_ma_no_motion` | same parameters, no motion: is the gain from motion? |
+| + WK | `p2_wk` | gain of the wide kernel alone |
+| + WK, dense 5x5 | `p4_wk_dense` | same kernel, one tensor: is the reparameterisation needed? |
+| + WK, ring at backbone lr | `p5_ring_lr_backbone` | is the separate learning rate needed? |
+| MA-X3D | `e11_kd_long` | full model |
+| ring zeroed at test | (no training) | is the learned ring used? (87.6% -> 80.6%) |
+
+Seeds: 3 for X3D-M, + MA, + WK and MA-X3D; 1 for the controls, 3 if the
+difference is close to the noise level.
+
+### 3. Training recipe (same network)
+
+| Row | Config | Question |
+| --- | --- | --- |
+| R0 conventional | `e00_baseline` | reference |
+| R1 backbone lr 5e-5 | `e05_lr_backbone5e-5` | effect of the learning rate (+1.26 OOF, p = 0.040) |
+| R1' 48 epochs, no teacher | `e19_long_no_kd` | control: is the distillation gain only the longer schedule? |
+| R2 distillation, 24 epochs | `e09_kd_lr5e-5` | distillation with the short schedule (no gain) |
+| R3 distillation, 48 epochs | `e11_kd_long` | final (+1.33 OOF over R1, p = 0.015) |
+
+### 4. Motion Attention design (final recipe, seed 0)
+
+`p7_ma_single_scale` (step 1 only), `p8_ma_raw_map` (no temporal modes),
+`p9_ma_after_res3`, `p10_ma_after_res5`.
+
+### Order and cost
+
+`runs/queue_J.sh` runs sections 2-3 at seed 0, then the 2 x 2 row of X3D-M, then
+seeds 1-2 of the single-module rows, then section 4. About 50 min per fold of the
+final recipe on one MI250 GCD.
+
+---
+
+## Version 1 (holdout protocol, superseded)
+
 Each row is one config file in `configs/`. Rows are trained with 3 seeds and reported
 as mean ± std on the official 400-clip test set.
 
