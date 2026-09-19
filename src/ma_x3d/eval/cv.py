@@ -261,3 +261,39 @@ def format_compare(r: dict) -> str:
             f"± {100 * r['test_single_diff_std']:.2f}; ensemble diff "
             f"{100 * r['test_ensemble_diff']:+.2f}, McNemar p = "
             f"{r['test_ensemble_mcnemar_p']:.4f}")
+
+
+def selection_bias(exp_dirs) -> list[dict]:
+    """Test accuracy at the epoch picked on validation vs. the best test epoch.
+
+    Needs runs trained with train.log_test_curve=true. The gap is what selecting the
+    checkpoint on the test split would add to the reported accuracy.
+    """
+    rows = []
+    for d in exp_dirs:
+        per_fold = []
+        for f in sorted(Path(d).glob("fold*/metrics.jsonl")):
+            ep = [json.loads(line) for line in f.read_text().splitlines()]
+            ep = [e for e in ep if "test_acc" in e]
+            if not ep:
+                continue
+            best_f1 = max(e["val_f1"] for e in ep)
+            chosen = next(e for e in ep if e["val_f1"] == best_f1)  # first, as in training
+            per_fold.append((chosen["test_acc"], max(e["test_acc"] for e in ep),
+                             ep[-1]["test_acc"]))
+        if per_fold:
+            a = np.array(per_fold)
+            rows.append({"exp": str(d), "folds": len(a), "val_selected": float(a[:, 0].mean()),
+                         "test_selected": float(a[:, 1].mean()), "last": float(a[:, 2].mean()),
+                         "gap": float((a[:, 1] - a[:, 0]).mean()),
+                         "gap_max": float((a[:, 1] - a[:, 0]).max())})
+    return rows
+
+
+def format_selection_bias(rows: list[dict]) -> str:
+    lines = [f"{'experiment':40s} folds | val-selected | test-selected | last | gap (max)"]
+    for r in rows:
+        lines.append(f"{r['exp']:40s} {r['folds']:5d} | {100 * r['val_selected']:12.2f} | "
+                     f"{100 * r['test_selected']:13.2f} | {100 * r['last']:4.1f} | "
+                     f"{100 * r['gap']:+.2f} ({100 * r['gap_max']:+.2f})")
+    return "\n".join(lines)

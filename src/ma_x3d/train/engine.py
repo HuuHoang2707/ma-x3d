@@ -284,6 +284,9 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
             row = {"epoch": epoch + 1, "phase": phase, "lr": lrs, "train_loss": tr["loss"],
                    "train_acc": tr["acc"], "val_loss": va["loss"], "val_acc": va["accuracy"],
                    "val_f1": va["f1"], "best": improved, "sec": round(dt, 1)}
+            if t.log_test_curve:  # analysis only; selection above uses validation
+                te = predict(judge, loaders["test"], device, amp, t.label_smoothing)["metrics"]
+                row["test_acc"], row["test_f1"] = te["accuracy"], te["f1"]
             with open(out / "metrics.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")
             eta = dt * (t.epochs - epoch - 1) / 60

@@ -4,3 +4,5 @@ name: e00_baseline
 description: baseline, 16 frames
 data:
   protocol: kfold
+train:
+  log_test_curve: true   # analysis only (selection-bias measurement)

@@ -118,3 +118,28 @@ def test_build_model_uses_config(monkeypatch, x3d_blocks):
     m = builder.build_model(ModelConfig(ma_stage="res3", wide_kernel="dense"))
     assert m.motion_attn.gate[2].out_channels == 48
     assert m.blocks[1].res_blocks[0].branch2.conv_b.kernel_size == (3, 5, 5)
+
+
+@pytest.mark.parametrize("name,frames", [("tv_r3d_18", 8), ("tv_mc3_18", 8),
+                                         ("tv_r2plus1d_18", 8), ("tv_s3d", 16)])
+def test_torchvision_baselines(name, frames):
+    from ma_x3d.models.builder import build_model
+
+    m = build_model(ModelConfig(backbone=name, pretrained=False, motion_attention=False,
+                                wide_kernel="none")).eval()
+    with torch.no_grad():
+        assert m(torch.rand(1, 3, frames, 64, 64)).shape == (1, 2)
+    new = [n for n, _ in m.named_parameters() if n.startswith(("net.fc.", "net.classifier."))]
+    assert new  # the replaced head is found by the parameter grouping
+
+
+@pytest.mark.parametrize("name,frames", [("x3d_xs", 4), ("x3d_s", 13)])
+def test_x3d_small_run_at_160(name, frames):
+    from ma_x3d.models.builder import build_model
+
+    m = build_model(ModelConfig(backbone=name, pretrained=False, motion_attention=False,
+                                wide_kernel="none", input_size=160)).eval()
+    with torch.no_grad():
+        feat = m.features(torch.rand(1, 3, frames, 224, 224), "res5")
+        assert feat.shape[-2:] == (5, 5)  # 160 / 32
+        assert m(torch.rand(1, 3, frames, 224, 224)).shape == (1, 2)

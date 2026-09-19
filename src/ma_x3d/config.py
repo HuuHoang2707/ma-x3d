@@ -43,7 +43,10 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     num_classes: int = 2
-    backbone: str = "x3d_m"  # x3d_m | x3d_l | videomae_b (teacher only)
+    # x3d_xs | x3d_s | x3d_m | x3d_l | tv_s3d | tv_mc3_18 | tv_r2plus1d_18 | tv_r3d_18
+    # | videomae_b (teacher)
+    backbone: str = "x3d_m"
+    input_size: int = 224  # X3D input side; clips are resized inside the model if different
     pretrained: bool = True
     normalize_input: bool = True  # Kinetics mean/std; the notebook fed raw [0, 1] frames
     head_dropout: float = 0.5
@@ -94,6 +97,9 @@ class TrainConfig:
     distill: str = ""
     distill_alpha: float = 0.5  # weight of the teacher term
     distill_temp: float = 2.0
+    # also score the test split after every epoch (written to metrics.jsonl only, never
+    # used for selection); measures how much picking the epoch on test would inflate
+    log_test_curve: bool = False
 
 
 @dataclass

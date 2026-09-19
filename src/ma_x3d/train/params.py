@@ -35,7 +35,7 @@ def _is_ring(name: str) -> bool:
 
 
 def _is_new(name: str, cfg: TrainConfig) -> bool:
-    if name.startswith(("motion_attn.", "eaa.", "net.classifier.")):
+    if name.startswith(("motion_attn.", "eaa.", "net.classifier.", "net.fc.")):
         return True
     if name.startswith(HEAD):
         return cfg.head_new == "all" or name.startswith(HEAD + "proj.")

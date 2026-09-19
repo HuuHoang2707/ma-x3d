@@ -1,0 +1,10 @@
+# Reproduced baseline: recipe R1 (e05: backbone lr 5e-5, 24 epochs, no distillation), same folds. All layers are fine-tuned (no X3D stages).
+_base_: e05_lr_backbone5e-5.yaml
+name: b5_mc3_18
+description: mc3_18 (torchvision, Kinetics-400), recipe R1
+model:
+  backbone: tv_mc3_18
+  motion_attention: false
+  wide_kernel: none
+train:
+  unfreeze: [all]

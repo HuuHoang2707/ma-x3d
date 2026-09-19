@@ -172,8 +172,19 @@ def cmd_export(a):
 
 
 def cmd_cv(a):
-    from .eval.cv import compare, evaluate_cv, experiment_table, format_compare, format_cv
+    from .eval.cv import (
+        compare,
+        evaluate_cv,
+        experiment_table,
+        format_compare,
+        format_cv,
+        format_selection_bias,
+        selection_bias,
+    )
 
+    if a.selection_bias:
+        print(format_selection_bias(selection_bias(a.exp)))
+        return
     if a.compare:
         base, *others = a.exp
         for other in others:
@@ -367,6 +378,8 @@ def main(argv: list[str] | None = None) -> None:
                    help="only print the experiment table (a variant name, or best)")
     s.add_argument("--compare", metavar="VARIANT",
                    help="paired test of every other exp against the first (McNemar, bootstrap)")
+    s.add_argument("--selection-bias", action="store_true",
+                   help="test accuracy at the validation-picked epoch vs the best test epoch")
     s.add_argument("--device")
     s.set_defaults(fn=cmd_cv)
 

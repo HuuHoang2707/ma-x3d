@@ -1,0 +1,7 @@
+# Reproduced baseline: recipe R1 (e05: backbone lr 5e-5, 24 epochs, no distillation), same folds.
+_base_: e05_lr_backbone5e-5.yaml
+name: b3_x3d_m
+description: X3D-M (16 x 224 x 224), recipe R1
+model:
+  motion_attention: false
+  wide_kernel: none
