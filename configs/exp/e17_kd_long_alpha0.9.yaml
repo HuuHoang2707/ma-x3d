@@ -1,0 +1,5 @@
+_base_: e11_kd_long.yaml
+name: e17_kd_long_alpha0.9
+description: e11 + teacher weight 0.9
+train:
+  distill_alpha: 0.9
