@@ -15,7 +15,7 @@ comma       := ,
 env:            ## create .venv with ROCm PyTorch and the package
 	uv venv --python 3.12 .venv
 	uv pip install --python $(PY) --index-url $(TORCH_INDEX) torch==2.14.0 torchvision==0.29.0
-	uv pip install --python $(PY) -e ".[dev]"
+	uv pip install --python $(PY) -e ".[dev,teacher]"
 
 data:           ## HDF5 -> memory-mapped .npy (once, ~3 min)
 	$(CLI) prepare --h5-dir dataset --out dataset/rwf2000

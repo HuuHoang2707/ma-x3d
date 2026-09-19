@@ -24,6 +24,8 @@ dependencies = [
 preprocess = ["opencv-python-headless", "scikit-learn", "ultralytics"]
 # ONNX export and CPU inference for edge devices.
 edge = ["onnx", "onnxscript", "onnxruntime"]
+# VideoMAE-B distillation teacher (training only).
+teacher = ["transformers>=4.45,<5"]
 dev = ["pytest", "ruff"]
 
 [project.scripts]

@@ -229,19 +229,21 @@ make report          # reports/summary.md; curves in runs/<name>/seed0/curves.pn
 | val F1 jumps up and down by several points | small val set, noise | trust val loss more, use 3 seeds |
 | best epoch is in the probe phase | fine-tuning hurts | lower `lr_new` / `lr_backbone`, more regularisation |
 
-### Knobs that mattered so far (seed 0, RWF-2000)
+### Knobs that mattered (grouped 4-fold CV, seed 0)
 
-| Change | Effect seen |
-| --- | --- |
-| 32 frames instead of 16 (notebook v5 setup) | best result so far: 88.75% test, val loss 0.40 and still falling |
-| `train_span: [0.6, 1.0]` (training window matches evaluation) | removed the early val-loss rise; the wide kernel started to be used |
-| EMA 0.999 + CutMix 0.5 | val loss flat instead of rising; alone, each helped less |
-| `head_new: proj` | small gain on top of EMA + CutMix |
-| weight decay 0.05, lower head LR, BN updates, no normalisation | no clear gain |
+Decided on out-of-fold (OOF) accuracy, 1583 clips; test = 4-fold ensemble, 1 view.
 
-Good next experiments: the new recipe at 32 frames
-(`configs/ablation/e1_frames32.yaml`), and the notebook-v5 setup with
-`--set data.protocol=holdout` so its number is valid for the paper.
+| Change | OOF acc | Test acc | Verdict |
+| --- | --- | --- | --- |
+| baseline `configs/exp/e00_baseline.yaml` | 88.44 | 86.25 | |
+| 32 frames | 88.76 | 86.75 | tie, 2x cost |
+| backbone lr 1e-5 -> 5e-5 | 89.83 | 88.50 | kept |
+| + distillation, 24 epochs | 89.83 | 88.00 | no gain alone |
+| + distillation, 48 epochs | 91.03 | 87.75 (89.25 with 4 views) | kept, best |
+| X3D-L backbone | 89.51 | 87.75 | small gain, 1.8x params |
+| flip TTA, threshold tuning | about 0 | | not used |
+
+The full table: `.venv/bin/python -m ma_x3d.cli cv --table best runs/e*/seed0`.
 
 ### Making runs faster
 
@@ -257,6 +259,57 @@ Good next experiments: the new recipe at 32 frames
 Pick the configuration by validation, then run it with 3 (or 5) seeds and report
 test mean +- std from `reports/summary.md`. Run the baseline and every ablation row
 the same way.
+
+## 8c. Train the final model yourself
+
+The final recipe is `configs/exp/e11_kd_long.yaml`: MA-X3D, backbone lr 5e-5,
+48 epochs, distilled from a VideoMAE-B teacher. Training has two steps, and each runs
+once per fold (4 folds). The teacher is used only during training; the deployed model
+is plain MA-X3D (3.0M parameters).
+
+Needs `transformers` (`make env` installs it; in an old venv:
+`uv pip install --python .venv/bin/python -e ".[teacher]"`).
+
+**Step 1: teachers** (about 15 min per fold, 9.4 GB):
+
+```bash
+.venv/bin/python -m ma_x3d.cli sweep --gpus auto --seeds 0 --folds 0 1 2 3 \
+    --configs configs/exp/t01_videomae.yaml
+```
+
+This writes `runs/t01_videomae/seed0/fold{0..3}`. The first run downloads the weights
+from Hugging Face (350 MB).
+
+**Step 2: students** (about 50 min per fold, 5.8 GB):
+
+```bash
+.venv/bin/python -m ma_x3d.cli sweep --gpus auto --seeds 0 1 2 --folds 0 1 2 3 \
+    --configs configs/exp/e11_kd_long.yaml
+```
+
+Each student loads the teacher of its fold. It refuses a teacher that was trained on
+different clips, and it waits if that teacher has not finished yet, so both sweeps
+can be started at once. All seeds share the seed-0 teachers.
+
+Or run one fold by hand on a chosen GPU:
+
+```bash
+HIP_VISIBLE_DEVICES=0 .venv/bin/python -m ma_x3d.cli train configs/exp/t01_videomae.yaml --seed 0 --set data.fold=0
+HIP_VISIBLE_DEVICES=0 .venv/bin/python -m ma_x3d.cli train configs/exp/e11_kd_long.yaml --seed 0 --set data.fold=0
+```
+
+**Step 3: evaluate** (OOF decides views and threshold, test = fold ensemble):
+
+```bash
+for s in 0 1 2; do
+  .venv/bin/python -m ma_x3d.cli cv runs/e11_kd_long/seed$s --variants 1clip 2off 4off
+done
+.venv/bin/python -m ma_x3d.cli cv --table best runs/e00_baseline/seed* runs/e11_kd_long/seed*
+```
+
+Report the mean over the 3 seeds for the baseline and the final model. For
+deployment, take one fold model (or all 4 as an ensemble) and fuse it:
+`ma-x3d export runs/e11_kd_long/seed0/fold0 --out exports/final` (section 10).
 
 ## 9. Cost and figures
 

@@ -21,6 +21,7 @@ make lint                    # ruff
 HIP_VISIBLE_DEVICES=4 .venv/bin/python -m ma_x3d.cli train configs/ma_x3d.yaml --seed 0 --set train.epochs=2
 .venv/bin/python -m ma_x3d.cli sweep --configs configs/ablation/*.yaml --seeds 0 1 2 --gpus 4 5 6 7
 .venv/bin/python -m ma_x3d.cli report        # reports/summary.md from runs/*/seed*/results.json
+.venv/bin/python -m ma_x3d.cli cv runs/<exp>/seed0   # k-fold: OOF decisions + fold-ensemble test
 ```
 
 `docs/GUIDE.md` has the full workflow; `docs/ablation_plan.md` lists every experiment row.
@@ -56,6 +57,9 @@ so always use `.venv/bin/python`.
 - **Wide kernel**: train in reparam form, fuse for inference (`fuse_wide_kernels`).
   `results.json` records ring energy, test accuracy with the ring zeroed, and a
   fused-vs-unfused check.
+- **Final recipe** (`configs/exp/e11_kd_long.yaml`): grouped 4-fold CV, backbone lr 5e-5,
+  48 epochs, distillation from a per-fold VideoMAE-B teacher (`configs/exp/t01_videomae.yaml`,
+  `models/teacher.py`). The student checks the teacher trained on the same clips. GUIDE 8c.
 
 ## Data
 
