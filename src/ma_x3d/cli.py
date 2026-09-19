@@ -44,6 +44,15 @@ def cmd_prepare(a):
     prepare(a.h5_dir, a.out, a.suffix, a.overwrite)
 
 
+def cmd_audit(a):
+    from .data.audit import audit
+
+    rep = audit(a.root)
+    short = {k: (v if not isinstance(v, list) or len(v) < 12 else f"{len(v)} items")
+             for k, v in rep.items()}
+    print(json.dumps(short, indent=2))
+
+
 def cmd_build_dataset(a):
     from .data.preprocess import build_dataset
 
@@ -162,33 +171,75 @@ def cmd_export(a):
             print(f"{k}: acc {rep[k]['accuracy']:.4f} f1 {rep[k]['f1']:.4f} (n={rep[k]['n']})")
 
 
+def cmd_cv(a):
+    from .eval.cv import evaluate_cv, format_cv
+
+    for d in a.exp:
+        print(format_cv(evaluate_cv(d, _device(a.device), a.variants, a.key)))
+        print()
+
+
+def _free_gpus(exclude: set[int], max_mem_pct: int = 15, max_use_pct: int = 20) -> list[int]:
+    """GPUs whose memory and compute use are low right now (shared node)."""
+    out = subprocess.run(["rocm-smi", "--showmemuse", "--showuse"], capture_output=True,
+                         text=True).stdout
+    mem, use = {}, {}
+    for line in out.splitlines():
+        if line.startswith("GPU[") and ":" in line:
+            gpu = int(line[4 : line.index("]")])
+            val = line.rsplit(":", 1)[1].strip()
+            if "VRAM%" in line and val.isdigit():
+                mem[gpu] = int(val)
+            elif "GPU use (%)" in line and val.isdigit():
+                use[gpu] = int(val)
+    return [g for g in sorted(mem) if g not in exclude and mem[g] <= max_mem_pct
+            and use.get(g, 0) <= max_use_pct]
+
+
 def cmd_sweep(a):
-    """Run every (config, seed) pair, one job per GPU at a time."""
-    jobs = [(c, s) for c in a.configs for s in a.seeds]
-    free, running = list(a.gpus), []
+    """Run every (config, seed[, fold]) job, one job per GPU at a time.
+
+    --gpus auto: use any GPU that is idle (other users' jobs are left alone).
+    --folds 0 1 2 3: K-fold jobs (sets data.protocol=kfold and data.fold).
+    """
+    folds = a.folds or [None]
+    jobs = [(c, s, f) for c in a.configs for s in a.seeds for f in folds]
+    auto = a.gpus == ["auto"]
+    free = [] if auto else [int(g) for g in a.gpus]
+    running = []
     log_dir = Path(a.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    print(f"{len(jobs)} jobs on GPUs {a.gpus}")
+    print(f"{len(jobs)} jobs on GPUs {a.gpus}", flush=True)
     while jobs or running:
+        if auto:
+            busy = {j[1] for j in running}
+            free = _free_gpus(busy)
         while jobs and free:
-            cfg, seed = jobs.pop(0)
+            cfg, seed, fold = jobs.pop(0)
             gpu = free.pop(0)
             env = dict(os.environ, HIP_VISIBLE_DEVICES=str(gpu), CUDA_VISIBLE_DEVICES=str(gpu))
+            extra = list(a.overrides)
+            if fold is not None:
+                extra += ["data.protocol=kfold", f"data.fold={fold}"]
             cmd = [sys.executable, "-m", "ma_x3d.cli", "train", cfg, "--seed", str(seed),
-                   *(["--resume"] if a.resume else []),
-                   *(["--set", *a.overrides] if a.overrides else [])]
-            log = open(log_dir / f"{Path(cfg).stem}_seed{seed}.log", "a")
+                   *(["--resume"] if a.resume else []), *(["--set", *extra] if extra else [])]
+            tag = f"{Path(cfg).stem}_seed{seed}" + (f"_fold{fold}" if fold is not None else "")
+            log = open(log_dir / f"{tag}.log", "a")
             running.append((subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT),
-                            gpu, cfg, seed))
-            print(f"[start] gpu {gpu}: {cfg} seed {seed}")
-        time.sleep(10)
+                            gpu, tag))
+            print(f"[start] gpu {gpu}: {tag}", flush=True)
+            if auto:
+                time.sleep(90)  # let the job allocate memory before counting free GPUs again
+                break
+        time.sleep(20)
         for job in list(running):
-            proc, gpu, cfg, seed = job
+            proc, gpu, tag = job
             if proc.poll() is not None:
                 running.remove(job)
-                free.append(gpu)
+                if not auto:
+                    free.append(gpu)
                 status = "done" if proc.returncode == 0 else "FAIL"
-                print(f"[{status}] gpu {gpu}: {cfg} seed {seed}")
+                print(f"[{status}] gpu {gpu}: {tag}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -201,6 +252,10 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--suffix", default="", help='e.g. "_none" for full-frame rebuilt files')
     s.add_argument("--overwrite", action="store_true")
     s.set_defaults(fn=cmd_prepare)
+
+    s = sub.add_parser("audit", help="duplicates, same-scene groups, clips to exclude")
+    s.add_argument("--root", default="dataset/rwf2000")
+    s.set_defaults(fn=cmd_audit)
 
     s = sub.add_parser("build-dataset", help="raw RWF-2000 videos -> HDF5 (needs [preprocess])")
     s.add_argument("--videos", required=True, help="folder with train/ and val/")
@@ -263,10 +318,18 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--threads", type=int, default=0, help="ONNX Runtime threads (0 = all)")
     s.set_defaults(fn=cmd_export)
 
+    s = sub.add_parser("cv", help="K-fold evaluation: OOF metrics, threshold, TTA, ensemble")
+    s.add_argument("exp", nargs="+", help="runs/<name>/seed0 folders holding fold*/")
+    s.add_argument("--variants", nargs="+", help="inference variants (default: all)")
+    s.add_argument("--key", default="accuracy", help="OOF metric for the threshold")
+    s.add_argument("--device")
+    s.set_defaults(fn=cmd_cv)
+
     s = sub.add_parser("sweep", help="run configs x seeds across GPUs")
     s.add_argument("--configs", nargs="+", required=True)
     s.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
-    s.add_argument("--gpus", type=int, nargs="+", default=[0])
+    s.add_argument("--gpus", nargs="+", default=["auto"], help="GPU ids, or auto")
+    s.add_argument("--folds", type=int, nargs="+", help="K-fold jobs, e.g. 0 1 2 3")
     s.add_argument("--resume", action="store_true")
     s.add_argument("--log-dir", default="runs/logs")
     s.add_argument("--set", dest="overrides", nargs="+", action="extend", default=[],

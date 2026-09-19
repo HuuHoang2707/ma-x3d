@@ -6,6 +6,7 @@ name: legacy_thesis
 description: thesis recipe, notebook behaviour
 data:
   protocol: test_as_val
+  exclude_duplicates: false  # as on Kaggle
   train_span: null          # thesis sampler (short dense training windows)
 model:
   normalize_input: false

@@ -1,0 +1,81 @@
+"""Duplicate / same-scene audit of the prepared arrays.
+
+Each clip gets a small appearance descriptor (4 frames, grey, 16x16, standardised).
+From cosine similarities between descriptors we derive:
+  * train clips that duplicate a test clip -> excluded from training (test stays unseen)
+  * exact duplicates inside train          -> the second copy is excluded
+  * same-scene groups inside train         -> kept together in one K-fold fold
+Writes {root}/audit.json, {root}/train_groups.npy and {root}/train_exclude.npy.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+
+def descriptors(path: str | Path) -> torch.Tensor:
+    x = np.load(path, mmap_mode="r")
+    frames = np.linspace(0, x.shape[1] - 1, 4).astype(int)
+    out = []
+    for i in range(len(x)):
+        f = torch.from_numpy(np.ascontiguousarray(x[i, frames])).float()
+        g = F.adaptive_avg_pool2d(f.mean(1, keepdim=True), 16).flatten()
+        out.append((g - g.mean()) / (g.std() + 1e-6))
+    return F.normalize(torch.stack(out), dim=1)
+
+
+def _components(n: int, pairs: list[tuple[int, int]]) -> np.ndarray:
+    parent = list(range(n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for a, b in pairs:
+        parent[find(a)] = find(b)
+    roots = [find(i) for i in range(n)]
+    _, groups = np.unique(roots, return_inverse=True)
+    return groups
+
+
+def audit(root: str | Path, dup_cos: float = 0.99, scene_cos: float = 0.9) -> dict:
+    root = Path(root)
+    tr = descriptors(root / "train_x.npy")
+    te = descriptors(root / "test_x.npy")
+    ytr = np.load(root / "train_y.npy")
+
+    s_te = (te @ tr.T).numpy()
+    test_dups = sorted({int(j) for j in np.where(s_te >= dup_cos)[1]})
+
+    s_tr = (tr @ tr.T).numpy()
+    np.fill_diagonal(s_tr, -1)
+    ii, jj = np.where(np.triu(s_tr >= scene_cos))
+    groups = _components(len(tr), list(zip(ii.tolist(), jj.tolist(), strict=True)))
+    exact = [(int(i), int(j)) for i, j in zip(ii, jj, strict=True) if s_tr[i, j] >= dup_cos]
+    second_copies = sorted({j for _, j in exact})
+    exclude = np.array(sorted(set(test_dups) | set(second_copies)), dtype=np.int64)
+
+    conflicts = [(int(i), int(j)) for i, j in zip(ii, jj, strict=True) if ytr[i] != ytr[j]]
+    sizes = np.bincount(groups)
+    report = {
+        "train_clips": len(tr),
+        "train_duplicates_of_test": test_dups,
+        "train_exact_duplicate_pairs": exact,
+        "excluded_from_training": exclude.tolist(),
+        "same_scene_pairs": int(len(ii)),
+        "same_scene_pairs_with_different_labels": conflicts,
+        "groups": int(groups.max() + 1),
+        "largest_group": int(sizes.max()),
+        "thresholds": {"duplicate_cos": dup_cos, "same_scene_cos": scene_cos},
+    }
+    np.save(root / "train_groups.npy", groups.astype(np.int64))
+    np.save(root / "train_exclude.npy", exclude)
+    (root / "audit.json").write_text(json.dumps(report, indent=2))
+    return report

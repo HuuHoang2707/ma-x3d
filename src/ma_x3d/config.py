@@ -26,6 +26,11 @@ class DataConfig:
     val_fraction: float = 0.1
     val_blocks: int = 20  # contiguous index blocks per class, see data/splits.py
     split_seed: int = 0
+    # "kfold": grouped stratified K-fold on train (groups from `ma-x3d audit`)
+    n_folds: int = 4
+    fold: int = 0
+    # drop train clips that duplicate test clips (and second copies of train duplicates)
+    exclude_duplicates: bool = True
     augment: bool = True
     augment_multiplier: int = 2  # each training clip appears this many times per epoch
     # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)

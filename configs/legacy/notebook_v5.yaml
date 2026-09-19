@@ -4,6 +4,7 @@ name: legacy_notebook_v5
 description: Kaggle notebook v5
 data:
   protocol: test_as_val
+  exclude_duplicates: false  # as on Kaggle
   frames: 32
   augment_multiplier: 1
   train_span: null

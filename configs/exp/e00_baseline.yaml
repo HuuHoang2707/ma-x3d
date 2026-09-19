@@ -1,0 +1,6 @@
+# Current default recipe (configs/ma_x3d.yaml) under grouped 4-fold CV.
+_base_: ../ma_x3d.yaml
+name: e00_baseline
+description: baseline, 16 frames
+data:
+  protocol: kfold

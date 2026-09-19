@@ -1,0 +1,5 @@
+_base_: e00_baseline.yaml
+name: e01_frames32
+description: 32 frames
+data:
+  frames: 32

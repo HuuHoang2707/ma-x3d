@@ -76,7 +76,13 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     xtr, ytr = array_paths(d.root, "train")
     xte, yte = array_paths(d.root, "test")
     ytr, yte = np.load(ytr), np.load(yte)
-    split = make_splits(ytr, yte, d.protocol, d.val_fraction, d.val_blocks, d.split_seed)
+    root = Path(d.root)
+    groups = np.load(root / "train_groups.npy") if (root / "train_groups.npy").exists() else None
+    exclude = None
+    if d.exclude_duplicates and (root / "train_exclude.npy").exists():
+        exclude = np.load(root / "train_exclude.npy")
+    split = make_splits(ytr, yte, d.protocol, d.val_fraction, d.val_blocks, d.split_seed,
+                        groups, exclude, d.n_folds, d.fold)
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
         "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,

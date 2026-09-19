@@ -44,7 +44,8 @@ from .utils import ModelEMA, amp_dtype, cutmix, environment_info, make_scheduler
 
 
 def run_dir(cfg: Config) -> Path:
-    return Path(cfg.output_dir) / cfg.name / f"seed{cfg.seed}"
+    out = Path(cfg.output_dir) / cfg.name / f"seed{cfg.seed}"
+    return out / f"fold{cfg.data.fold}" if cfg.data.protocol == "kfold" else out
 
 
 class _Log:
