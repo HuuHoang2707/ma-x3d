@@ -28,7 +28,7 @@ HIP_VISIBLE_DEVICES=4 .venv/bin/python -m ma_x3d.cli train configs/ma_x3d.yaml -
 ## Hardware
 
 The host is a shared node with 8 MI250 GCDs (ROCm, gfx90a). Other users occupy some GCDs:
-check `rocm-smi --showmemuse` and pin jobs with `HIP_VISIBLE_DEVICES`. PyTorch uses the
+use `ma-x3d gpus` (HIP ids differ from rocm-smi ids on this node: HIP 0-7 = rocm-smi 2,3,0,1,6,7,4,5) and pin jobs with `HIP_VISIBLE_DEVICES`; `sweep --gpus auto` picks idle GPUs. PyTorch uses the
 `cuda` API on ROCm. The system `python3` has a CUDA build of torch and cannot use the GPUs,
 so always use `.venv/bin/python`.
 

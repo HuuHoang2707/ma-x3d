@@ -23,14 +23,17 @@ In VS Code, select `.venv/bin/python` as the interpreter so imports resolve.
 
 ## 2. Pick a free GPU
 
-The MI250 node is shared. Look at memory use and pick GCDs that are empty:
+The MI250 node is shared. **On this node `HIP_VISIBLE_DEVICES` and `rocm-smi` number the
+GPUs differently** (HIP 0-7 = rocm-smi 2, 3, 0, 1, 6, 7, 4, 5), so do not read an id off
+`rocm-smi` and pass it to `HIP_VISIBLE_DEVICES`. Use:
 
 ```bash
-rocm-smi --showmemuse | grep VRAM
+.venv/bin/python -m ma_x3d.cli gpus
 ```
 
-Each run then gets one GCD through `HIP_VISIBLE_DEVICES` (the Makefile does this with
-`GPU=`). Inside the process the chosen GCD is always `cuda:0`.
+It lists every GPU with its HIP id (the one to use), its rocm-smi id, memory and use.
+Pick GPUs with ~0% memory. `sweep --gpus auto` does this by itself and only starts a
+job on a GPU nobody is using.
 
 ## 3. Data (once)
 
