@@ -2,6 +2,7 @@ _base_: e05_lr_backbone5e-5.yaml
 name: e09_kd_lr5e-5
 description: backbone lr 5e-5 + distillation from VideoMAE-B
 train:
-  distill: runs/t01_videomae/seed{seed}/fold{fold}
+  # one teacher per fold (seed 0) for every student seed; folds depend on split_seed only
+  distill: runs/t01_videomae/seed0/fold{fold}
   distill_alpha: 0.5
   distill_temp: 2.0
