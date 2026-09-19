@@ -30,6 +30,7 @@ class MAX3D(nn.Module):
         normalize_input: bool = True,
         motion_multiscale: bool = True,
         motion_clip: float = 0.2,
+        motion_input: str = "frames",
     ):
         super().__init__()
         self.blocks = blocks
@@ -39,11 +40,13 @@ class MAX3D(nn.Module):
         self.normalize_input = normalize_input
         self.motion_multiscale = motion_multiscale
         self.motion_clip = motion_clip
+        self.motion_input = motion_input
         self.register_buffer("mean", torch.tensor(KINETICS_MEAN).view(1, 3, 1, 1, 1), False)
         self.register_buffer("std", torch.tensor(KINETICS_STD).view(1, 3, 1, 1, 1), False)
 
     def motion(self, clip: torch.Tensor) -> torch.Tensor:
-        return motion_map(clip, self.motion_multiscale, self.motion_clip)
+        m = motion_map(clip, self.motion_multiscale, self.motion_clip)
+        return torch.zeros_like(m) if self.motion_input == "zero" else m
 
     def _run(self, clip: torch.Tensor, last: int) -> torch.Tensor:
         motion = self.motion(clip) if self.motion_attn is not None else None

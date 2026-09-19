@@ -1,0 +1,6 @@
+# Control: same gate and parameters as MA-X3D, but the motion map is all zero.
+_base_: e11_kd_long.yaml
+name: p6_ma_no_motion
+description: final recipe, MA gate without motion input
+model:
+  motion_input: zero

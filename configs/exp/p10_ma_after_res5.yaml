@@ -1,0 +1,5 @@
+_base_: e11_kd_long.yaml
+name: p10_ma_after_res5
+description: final recipe, Motion Attention after Res5
+model:
+  ma_stage: res5

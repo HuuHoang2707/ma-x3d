@@ -1,0 +1,5 @@
+_base_: e11_kd_long.yaml
+name: p7_ma_single_scale
+description: final recipe, motion map with frame step 1 only
+model:
+  motion_multiscale: false

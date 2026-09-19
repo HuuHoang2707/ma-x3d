@@ -103,3 +103,16 @@ def test_auc_matches_pairwise_definition():
     pos, neg = s[y == 1], s[y == 0]
     pairs = [(a > b) + 0.5 * (a == b) for a in pos for b in neg]
     assert abs(roc_auc(y, s) - sum(pairs) / len(pairs)) < 1e-9
+
+
+def test_zero_motion_input_removes_motion(x3d_blocks):
+    import copy
+
+    from ma_x3d.models.ma_x3d import MAX3D
+    from ma_x3d.models.motion_attention import MotionAttention
+
+    ma = MotionAttention(96)
+    m = MAX3D(copy.deepcopy(x3d_blocks), copy.deepcopy(ma), motion_input="zero")
+    clip = torch.rand(1, 3, 16, 64, 64)
+    assert m.motion(clip).abs().max() == 0
+    assert MAX3D(copy.deepcopy(x3d_blocks), ma).motion(clip).abs().max() > 0

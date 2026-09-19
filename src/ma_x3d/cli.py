@@ -172,8 +172,13 @@ def cmd_export(a):
 
 
 def cmd_cv(a):
-    from .eval.cv import evaluate_cv, experiment_table, format_cv
+    from .eval.cv import compare, evaluate_cv, experiment_table, format_compare, format_cv
 
+    if a.compare:
+        base, *others = a.exp
+        for other in others:
+            print(format_compare(compare(base, other, a.compare)))
+        return
     if a.table:
         print(experiment_table(a.exp, a.table))
         return
@@ -360,6 +365,8 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--key", default="accuracy", help="OOF metric for the threshold")
     s.add_argument("--table", metavar="VARIANT",
                    help="only print the experiment table (a variant name, or best)")
+    s.add_argument("--compare", metavar="VARIANT",
+                   help="paired test of every other exp against the first (McNemar, bootstrap)")
     s.add_argument("--device")
     s.set_defaults(fn=cmd_cv)
 

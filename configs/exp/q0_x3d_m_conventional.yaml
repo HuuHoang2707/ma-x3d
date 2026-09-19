@@ -1,0 +1,7 @@
+# 2x2 with p0/e00/e11: X3D-M under the conventional recipe (no MA, no WK).
+_base_: e00_baseline.yaml
+name: q0_x3d_m_conventional
+description: conventional recipe, X3D-M (no MA, no WK)
+model:
+  motion_attention: false
+  wide_kernel: none

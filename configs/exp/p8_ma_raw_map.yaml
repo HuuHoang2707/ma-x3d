@@ -1,0 +1,5 @@
+_base_: e11_kd_long.yaml
+name: p8_ma_raw_map
+description: final recipe, raw motion map into the gate (no temporal modes)
+model:
+  ma_modes: 0

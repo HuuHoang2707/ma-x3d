@@ -51,6 +51,8 @@ class ModelConfig:
     ma_stage: str = "res4"  # stage whose output is gated
     motion_multiscale: bool = True  # max over frame steps 1 and 2
     motion_clip: float = 0.2
+    # "zero" feeds an all-zero motion map to the gate (control: same parameters, no motion)
+    motion_input: str = "frames"
     ma_modes: int = 4  # 0 feeds the raw motion map to the gate (no temporal conv)
     ma_temporal_kernel: int = 3
     ma_reduction: int = 4

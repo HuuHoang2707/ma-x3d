@@ -189,3 +189,75 @@ def experiment_table(exp_dirs: list[str | Path], variant: str = "1clip") -> str:
             f"{100 * t['accuracy']:.2f} | {t['precision']:.3f} | {t['recall']:.3f} | "
             f"{t['f1']:.3f} | {t['auc']:.3f} |")
     return "\n".join(lines)
+
+
+def mcnemar_p(correct_a: np.ndarray, correct_b: np.ndarray) -> float:
+    """Exact two-sided McNemar test on paired per-clip correctness."""
+    from math import comb
+
+    b = int(np.sum(correct_a & ~correct_b))
+    c = int(np.sum(~correct_a & correct_b))
+    n, k = b + c, min(b, c)
+    if n == 0:
+        return 1.0
+    return min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / 2**n)
+
+
+def _oof(exp_dir: Path, variant: str) -> tuple[np.ndarray, np.ndarray, list]:
+    """OOF probability per train clip index, labels, and per-fold test probabilities."""
+    folds = sorted(Path(exp_dir).glob("fold*/cv_predictions.npz"))
+    if not folds:
+        raise FileNotFoundError(f"run `ma-x3d cv {exp_dir}` first")
+    idx, y, p, test = [], [], [], []
+    for f in folds:
+        d = np.load(f)
+        idx.append(d["val_idx"]), y.append(d["val_y"]), p.append(d[f"val:{variant}"])
+        test.append((d["test_y"], d[f"test:{variant}"]))
+    order = np.argsort(np.concatenate(idx))
+    return np.concatenate(p)[order], np.concatenate(y)[order], test
+
+
+def compare(exp_a, exp_b, variant: str = "1clip", threshold: float = 0.5,
+            n_boot: int = 10000, seed: int = 0) -> dict:
+    """Paired comparison of two k-fold experiments (B minus A).
+
+    OOF: accuracy difference, 95% bootstrap interval over clips, exact McNemar p.
+    Test: difference of the fold models (mean, std), and McNemar on the fold ensemble.
+    Both experiments must use the same folds (same split_seed and exclusions).
+    """
+    pa, ya, ta = _oof(exp_a, variant)
+    pb, yb, tb = _oof(exp_b, variant)
+    if len(ya) != len(yb) or (ya != yb).any():
+        raise ValueError("the two experiments do not share the same folds")
+    ca, cb = (pa >= threshold) == ya, (pb >= threshold) == yb
+    rng = np.random.default_rng(seed)
+    boot = rng.integers(0, len(ya), (n_boot, len(ya)))
+    diffs = cb[boot].mean(1) - ca[boot].mean(1)
+    fold_diff = [((b >= threshold) == y).mean() - ((a >= threshold) == y).mean()
+                 for (y, a), (_, b) in zip(ta, tb, strict=True)]
+    y = ta[0][0]
+    ea = (np.mean([a for _, a in ta], 0) >= threshold) == y
+    eb = (np.mean([b for _, b in tb], 0) >= threshold) == y
+    return {
+        "a": str(exp_a), "b": str(exp_b), "variant": variant, "clips": int(len(ya)),
+        "oof_acc_a": float(ca.mean()), "oof_acc_b": float(cb.mean()),
+        "oof_diff": float(cb.mean() - ca.mean()),
+        "oof_diff_ci95": [float(np.percentile(diffs, 2.5)), float(np.percentile(diffs, 97.5))],
+        "oof_mcnemar_p": mcnemar_p(ca, cb),
+        "test_single_diff_mean": float(np.mean(fold_diff)),
+        "test_single_diff_std": float(np.std(fold_diff)),
+        "test_ensemble_diff": float(eb.mean() - ea.mean()),
+        "test_ensemble_mcnemar_p": mcnemar_p(ea, eb),
+    }
+
+
+def format_compare(r: dict) -> str:
+    lo, hi = r["oof_diff_ci95"]
+    return (f"{r['b']}  vs  {r['a']}  ({r['variant']})\n"
+            f"  OOF  ({r['clips']} clips): {100 * r['oof_acc_a']:.2f} -> "
+            f"{100 * r['oof_acc_b']:.2f}  diff {100 * r['oof_diff']:+.2f} "
+            f"[{100 * lo:+.2f}, {100 * hi:+.2f}]  McNemar p = {r['oof_mcnemar_p']:.4f}\n"
+            f"  test (single models): diff {100 * r['test_single_diff_mean']:+.2f} "
+            f"± {100 * r['test_single_diff_std']:.2f}; ensemble diff "
+            f"{100 * r['test_ensemble_diff']:+.2f}, McNemar p = "
+            f"{r['test_ensemble_mcnemar_p']:.4f}")

@@ -1,0 +1,7 @@
+# Control for distillation: the 48-epoch schedule of e11 without the teacher.
+_base_: e05_lr_backbone5e-5.yaml
+name: e19_long_no_kd
+description: lr 5e-5 + 48 epochs, no distillation
+train:
+  epochs: 48
+  patience: 16
