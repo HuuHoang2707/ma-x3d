@@ -1,0 +1,7 @@
+# "Patient" distillation (Beyer et al., CVPR 2022): a longer schedule.
+_base_: e09_kd_lr5e-5.yaml
+name: e11_kd_long
+description: e09 + 48 epochs, patience 16
+train:
+  epochs: 48
+  patience: 16

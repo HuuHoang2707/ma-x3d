@@ -1,0 +1,5 @@
+_base_: e09_kd_lr5e-5.yaml
+name: e12_kd_alpha0.9
+description: e09 + teacher weight 0.9
+train:
+  distill_alpha: 0.9
