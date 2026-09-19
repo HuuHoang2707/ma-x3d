@@ -1,0 +1,6 @@
+_base_: e11_kd_long.yaml
+name: e16_kd_long96
+description: e11 + 96 epochs, patience 32
+train:
+  epochs: 96
+  patience: 32
