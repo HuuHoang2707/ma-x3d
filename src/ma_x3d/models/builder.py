@@ -6,8 +6,8 @@ from ..config import ModelConfig
 from .eaa import EfficientAdditiveAttention
 from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
 from .motion_attention import MotionAttention
+from .teacher import TEACHERS, VideoMAEClassifier
 from .wide_kernel import widen_stage
-
 
 # Kinetics-400 checkpoints and depth factors of pytorchvideo's X3D-M and X3D-L.
 BACKBONES = {"x3d_m": ("X3D_M.pyth", 2.2), "x3d_l": ("X3D_L.pyth", 5.0)}
@@ -36,7 +36,11 @@ def x3d_blocks(pretrained: bool, num_classes: int, head_dropout: float,
     return net.blocks
 
 
-def build_model(cfg: ModelConfig) -> MAX3D:
+def build_model(cfg: ModelConfig) -> nn.Module:
+    if cfg.backbone in TEACHERS:
+        if cfg.motion_attention or cfg.wide_kernel != "none" or cfg.eaa:
+            raise ValueError(f"{cfg.backbone} takes no MA-X3D modules")
+        return VideoMAEClassifier(cfg.backbone, cfg.num_classes, cfg.pretrained)
     blocks = x3d_blocks(cfg.pretrained, cfg.num_classes, cfg.head_dropout, cfg.backbone)
     if cfg.wide_kernel != "none":
         if cfg.wide_kernel not in ("reparam", "dense"):

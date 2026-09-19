@@ -43,7 +43,7 @@ class DataConfig:
 @dataclass
 class ModelConfig:
     num_classes: int = 2
-    backbone: str = "x3d_m"  # x3d_m | x3d_l
+    backbone: str = "x3d_m"  # x3d_m | x3d_l | videomae_b (teacher only)
     pretrained: bool = True
     normalize_input: bool = True  # Kinetics mean/std; the notebook fed raw [0, 1] frames
     head_dropout: float = 0.5
@@ -87,6 +87,11 @@ class TrainConfig:
     compile: bool = False
     # Triton kernels for depthwise 3D convs (same result, ~2x faster training on MI250)
     fast_depthwise: bool = True
+    # knowledge distillation: teacher run dir, "{seed}" and "{fold}" are filled in.
+    # The teacher must have been trained on exactly the same training clips.
+    distill: str = ""
+    distill_alpha: float = 0.5  # weight of the teacher term
+    distill_temp: float = 2.0
 
 
 @dataclass

@@ -58,7 +58,7 @@ class _Log:
 
 
 def _train_epoch(model, fwd, loader, opt, scaler, cfg: Config, device, amp, ema,
-                 epoch: int) -> dict:
+                 epoch: int, teacher=None) -> dict:
     t = cfg.train
     model.train()
     if t.freeze_bn:
@@ -79,6 +79,11 @@ def _train_epoch(model, fwd, loader, opt, scaler, cfg: Config, device, amp, ema,
         if mixed:
             loss = lam * loss + (1 - lam) * F.cross_entropy(
                 logits, y_b, label_smoothing=t.label_smoothing)
+        if teacher is not None:  # the teacher sees the same (augmented, mixed) clip
+            with torch.no_grad(), torch.autocast(device.type, dtype=amp, enabled=amp is not None):
+                soft = (teacher(clip).float() / t.distill_temp).softmax(1)
+            kd = F.kl_div((logits / t.distill_temp).log_softmax(1), soft, reduction="batchmean")
+            loss = (1 - t.distill_alpha) * loss + t.distill_alpha * t.distill_temp ** 2 * kd
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         if t.grad_clip > 0:
@@ -111,6 +116,26 @@ def _wrap(model, cfg: Config, device):
     if torch.distributed.is_initialized():
         fwd = DDP(model, device_ids=[device.index], forward_sync_buffers=False)
     return torch.compile(fwd) if cfg.train.compile else fwd
+
+
+def _load_teacher(cfg: Config, train_idx, device, log):
+    """Teacher of the same fold. Refuses a teacher trained on other clips."""
+    from ..cli import _load_run
+
+    run = Path(cfg.train.distill.format(seed=cfg.seed, fold=cfg.data.fold))
+    if not (run / "results.json").exists():
+        log(f"waiting for teacher {run} to finish")
+        while not (run / "results.json").exists():  # best.pt of an unfinished run is partial
+            time.sleep(60)
+    split = json.loads((run / "split.json").read_text())
+    if sorted(split["train"]) != sorted(int(i) for i in train_idx):
+        raise ValueError(f"teacher {run} was trained on different clips")
+    tcfg, teacher = _load_run(run, device)
+    for p in teacher.parameters():
+        p.requires_grad_(False)
+    log(f"distilling from {run} ({tcfg.model.backbone}), alpha {cfg.train.distill_alpha}, "
+        f"T {cfg.train.distill_temp}")
+    return teacher.eval()
 
 
 def _final_eval(model, loaders, cfg: Config, device, amp, out: Path, log) -> dict:
@@ -203,6 +228,7 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
     if world > 1:
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     amp = amp_dtype(t.amp)
+    teacher = _load_teacher(cfg, ds["train"].indices, device, log) if t.distill else None
     scaler = torch.amp.GradScaler(device.type, enabled=t.amp == "fp16")
     ema = ModelEMA(model, t.ema_decay) if t.ema_decay > 0 else None
     n_params = sum(p.numel() for p in model.parameters())
@@ -241,7 +267,7 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         t0 = time.time()
         lrs = [g["lr"] for g in opt.param_groups]
         tr = _train_epoch(model, fwd, loaders["train"], opt, scaler, cfg, device, amp, ema,
-                          epoch + 1)
+                          epoch + 1, teacher)
         sched.step()
         stop = False
         if main:

@@ -25,6 +25,8 @@ HEAD = f"blocks.{STAGES['head']}."
 
 
 def _in_stage(name: str, stage: str) -> bool:
+    if stage == "all":  # every pre-trained weight (used for the VideoMAE teacher)
+        return True
     return name.startswith(f"blocks.{STAGES[stage]}.")
 
 
@@ -33,7 +35,7 @@ def _is_ring(name: str) -> bool:
 
 
 def _is_new(name: str, cfg: TrainConfig) -> bool:
-    if name.startswith(("motion_attn.", "eaa.")):
+    if name.startswith(("motion_attn.", "eaa.", "net.classifier.")):
         return True
     if name.startswith(HEAD):
         return cfg.head_new == "all" or name.startswith(HEAD + "proj.")

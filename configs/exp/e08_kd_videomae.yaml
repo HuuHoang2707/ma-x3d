@@ -1,0 +1,7 @@
+_base_: e00_baseline.yaml
+name: e08_kd_videomae
+description: distillation from the VideoMAE-B teacher of the same fold
+train:
+  distill: runs/t01_videomae/seed{seed}/fold{fold}
+  distill_alpha: 0.5
+  distill_temp: 2.0

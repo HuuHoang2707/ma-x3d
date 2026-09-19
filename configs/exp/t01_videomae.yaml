@@ -1,0 +1,19 @@
+# Distillation teacher (not part of MA-X3D): Kinetics VideoMAE-B fine-tuned per fold on
+# the same training clips as the student. Fine-tuning settings follow the ViT recipe
+# (small backbone lr, weight decay 0.05).
+_base_: e00_baseline.yaml
+name: t01_videomae
+description: VideoMAE-B teacher
+model:
+  backbone: videomae_b
+  motion_attention: false
+  wide_kernel: none
+train:
+  epochs: 15
+  probe_epochs: 1
+  patience: 5
+  lr_probe: 1.0e-3
+  lr_backbone: 3.0e-5
+  lr_new: 1.0e-3
+  weight_decay: 0.05
+  unfreeze: [all]
