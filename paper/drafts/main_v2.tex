@@ -556,43 +556,101 @@ out-of-fold predictions brings no gain.
 \section{Evaluation Protocol}
 \label{sec:protocol}
 
-\textbf{Data audit.} RWF-2000~\cite{rwf2000} provides 1{,}600 training and
-400 test clips of about five seconds, half of them violent, collected from
-YouTube. We compared all clips with frame descriptors. Nine training clips
-are exact copies of test clips (all non-violent), and nine pairs of exact
-copies occur within the training split. We remove 17 training clips so that
-no test clip and no second copy is used for training, which leaves 1{,}583.
-At a descriptor cosine similarity of at least 0.9, 31 training pairs show
-the same scene; six of them carry different labels. These pairs are
-grouped, giving 1{,}572 groups of at most three clips.
+\subsection{Datasets}
 
-\textbf{Cross-validation.} The benchmark has no validation split. We split
-the 1{,}583 clips into four folds that are stratified by class and never
-separate a group (about 1{,}187 training and 396 validation clips per
-fold). In each fold the checkpoint with the best validation F1 is kept.
-The four validation sets cover every clip once, which gives one
-out-of-fold (OOF) prediction per clip.
+We use three public benchmarks (Table~\ref{tab:data}).
+RWF-2000~\cite{rwf2000} contains 2{,}000 five-second clips of real fights
+and non-violent activity, most of them from surveillance cameras, with an
+official split of 1{,}600 training and 400 test clips. Hockey
+Fights~\cite{hockey} contains 1{,}000 clips of 41 frames ($360\times288$)
+from professional ice-hockey games. RLVS~\cite{rlvs} contains 2{,}000 clips
+of street fights and everyday activities collected from YouTube. The last
+two have no official split. All clips pass through the pipeline of
+Section~\ref{sec:method} and are stored with 64 frames; the Hockey clips,
+which are shorter, repeat frames to reach this length.
 
-\textbf{Decisions and test use.} Every choice in this paper, including the
-training recipe, the number of views and the threshold, is made on the
-1{,}583 OOF predictions. The test split is then scored once. Main results
-report the test accuracy of a single model as the mean $\pm$ standard
-deviation over the four fold models; each of them has seen 75\% of the
-training clips. We also report the average of the four models where
-stated, with its cost.
-% TODO: 3 seeds x 4 folds once the runs finish; state "mean +- std over 12 models".
+\subsection{Duplicate audit and splits}
 
-\textbf{Metrics and cost.} We report accuracy, and precision, recall and F1
-of the violent class, and ROC-AUC. Differences between two models are tested
-with the exact McNemar test on their paired OOF predictions and reported
-with 95\% bootstrap intervals over clips. Cost is measured as parameters after
-fusion, GFLOPs per view at $16\times224\times224$ (fvcore), latency and
-throughput on one AMD MI250 GCD, CPU latency on an AMD EPYC 7413 with 16
-threads, and training time and peak memory.
+Each clip is described by four evenly spaced frames, converted to grey,
+average-pooled to $16\times16$ and standardised; two clips are compared by
+the cosine similarity of their descriptors. Pairs above 0.99 are treated as
+copies and pairs above 0.9 as the same scene. In RWF-2000, nine training
+clips are copies of test clips, all non-violent, and nine further pairs of
+copies occur within the training split. We remove these 17 training clips,
+so that no test clip and no second copy is used for training. In Hockey
+Fights and RLVS we remove 3 and 15 copies. For these two datasets we draw a
+test set of 20\% by whole same-scene groups, with both classes balanced,
+so that no scene appears on both sides. The copy of RLVS that we obtained
+stores each of its 2{,}000 videos twice, in folders named \emph{train} and
+\emph{test}; we use one copy. Same-scene pairs that remain in a training
+split are kept in the same cross-validation fold.
 
-\textbf{Implementation.} PyTorch 2.14 on ROCm 7.2. The depthwise 3D
-convolutions use custom Triton kernels, which make a training step 2.3
-times faster than the vendor library and give the same results. One fold
+\begin{table}[t]
+  \centering
+  \caption{Datasets after the duplicate audit. Groups: same-scene groups
+  in the training split (a group never spans two folds). Frames: typical
+  length of the original clips (median for RLVS).}
+  \label{tab:data}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{lcccccc}
+    \toprule
+    Dataset & Clips & Copies removed & Train & Test & Groups & Frames \\
+    \midrule
+    RWF-2000      & 2{,}000 & 17 & 1{,}583 & 400 & 1{,}572 & 150 \\
+    Hockey Fights & 1{,}000 & 3  & 797     & 200 & 792     & 41 \\
+    RLVS          & 2{,}000 & 15 & 1{,}588 & 397 & 1{,}581 & 125 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Cross-validation and decisions}
+
+None of the benchmarks has a validation split. We divide each training
+split into four folds that are stratified by class and never separate a
+same-scene group; in each fold the checkpoint with the best validation F1
+is kept. The four validation sets cover every training clip once, which
+gives one out-of-fold (OOF) prediction per clip. Every choice in this
+paper, including the architecture, the training recipe, the number of views
+and the decision threshold, is made on these OOF predictions. The test
+split is scored once. We report the test metrics of single models as the
+mean $\pm$ standard deviation over the fold models; each has seen 75\% of
+the training clips. Unless stated otherwise, results are averaged over
+three training seeds.
+% TODO: state the number of seeds per table once the runs are complete.
+
+\subsection{Statistics}
+
+Two models evaluated on the same clips are compared with the exact McNemar
+test~\cite{mcnemar} on their paired OOF predictions. We also report the
+difference in OOF accuracy with a 95\% bootstrap interval over
+clips~\cite{bootstrap}; for several seeds, the per-clip correctness is
+averaged over seeds before resampling. On the 1{,}583 OOF clips of
+RWF-2000 the half-width of this interval is about 1.1 points in our
+comparisons, whereas on its 400 test clips one point corresponds to four
+clips.
+
+\subsection{Reproduced baselines}
+
+To compare methods under the same conditions, we train six Kinetics-400
+backbones with the same folds, augmentation and recipe as our network
+(probe phase, backbone learning rate $5\times10^{-5}$, new layers
+$5\times10^{-4}$, 24 epochs, no distillation): X3D-XS, X3D-S and
+X3D-M~\cite{x3d} at their native inputs ($4\times160^2$, $13\times160^2$,
+$16\times224^2$), and S3D~\cite{s3d}, MC3-18 and
+R(2+1)D-18~\cite{r2plus1d} at their training resolutions ($224^2$,
+$112^2$, $112^2$) with 16 frames. For the X3D models the stages trained
+are those of Table~\ref{tab:phases}; the other backbones are fine-tuned
+completely.
+
+\subsection{Metrics, cost and implementation}
+
+We report accuracy, precision, recall and F1 of the violent class, and
+ROC-AUC. Cost is given as parameters after fusion, GFLOPs per view counted
+as multiply--accumulates with fvcore, latency and throughput on one AMD
+MI250 GCD, latency on an AMD EPYC 7413 CPU with 16 threads, and training
+time and memory. The code uses PyTorch 2.14 on ROCm 7.2; the channel-wise
+3D convolutions run as custom Triton kernels, which make a training step
+2.3 times faster than the vendor library with identical results. Each fold
 trains on one MI250 GCD.
 
 %======================================================================
