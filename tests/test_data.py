@@ -97,3 +97,21 @@ def test_real_arrays_match_hdf5():
     with h5py.File(H5) as f:
         assert np.array_equal(x[5], f["Fight"][5])
         assert np.array_equal(x[200 + 7], f["NonFight"][7])
+
+
+def test_group_kfold_keeps_groups_and_classes():
+    from ma_x3d.data.splits import group_kfold
+
+    rng = np.random.default_rng(0)
+    labels = np.array([1] * 100 + [0] * 100)
+    groups = np.arange(200)
+    groups[10:13] = 10  # a 3-clip group
+    groups[150:152] = 150
+    folds = group_kfold(labels, groups, 4, seed=0, pool=np.setdiff1d(np.arange(200), [5, 6]))
+    allv = np.concatenate(folds)
+    assert len(allv) == 198 and len(set(allv.tolist())) == 198 and 5 not in allv
+    for f in folds:
+        assert abs(labels[f].mean() - 0.5) < 0.05
+    owner = {i: k for k, f in enumerate(folds) for i in f}
+    assert owner[10] == owner[11] == owner[12] and owner[150] == owner[151]
+    del rng
