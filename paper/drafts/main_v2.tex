@@ -16,8 +16,8 @@
 
 \begin{document}
 
-\title{MA-X3D: A Lightweight Motion-Attentive 3D CNN\\
-for Violence Detection in Surveillance Video}
+\title{How Much Do Motion Attention and Wide Kernels Help?\\
+A Leakage-Free Study of Lightweight Violence Detection}
 
 \author{\IEEEauthorblockN{Nguyen Huu Hoang}
 \IEEEauthorblockA{\textit{School of Information and Communications Technology} \\
@@ -34,31 +34,32 @@ Hanoi, Vietnam}
 \maketitle
 
 \begin{abstract}
-Automatic violence detection is useful only if it can run on every stream of
-a surveillance installation, yet the most accurate models on the RWF-2000
-benchmark have tens to hundreds of millions of parameters. We ask how much
-of this accuracy a compact 3D convolutional network can retain within a
-budget of a few GFLOPs per clip. The proposed MA-X3D adds two modules to
-X3D-M, both initialised as the identity: a Motion Attention gate that
-rescales mid-level features according to a multi-scale frame-difference
-map, and a reparameterised $5\times5$ channel-wise kernel in the two
-earliest residual stages, whose outer ring is trained in its own
-learning-rate group and fused into a single kernel for inference. Together
-they add 36K parameters. The network is trained with discriminative
-fine-tuning and with distillation from a VideoMAE-B teacher that receives
-the same augmented clips. Because RWF-2000 has no validation split and its
-training split contains copies of test clips, we remove duplicates and take
-every design decision by grouped four-fold cross-validation, so that the
-test split is used once. Under this protocol a single MA-X3D model with
-3.0M parameters and 5.5 GFLOPs reaches 87.6\% accuracy and 0.875 F1 on the
-test split, compared with 86.1\% for conventional fine-tuning of the same
-network and 91.2\% for the teacher, which is 29 times larger.
-% TODO: one sentence on Tables IV-V (modules vs controls) once they are complete.
+Violence detection has to run on every stream of a surveillance
+installation, so the model that is deployed is usually a compact one, and
+the literature reports steady gains for small architectural additions to
+such models. We examine what these gains consist of. MA-X3D extends X3D-M
+with two identity-initialised modules that add 1.2\% parameters and fuse
+away at inference: a Motion Attention gate driven by a multi-scale
+frame-difference map, and a reparameterised $5\times5$ channel-wise kernel
+in the two earliest residual stages. We evaluate them on RWF-2000, Hockey
+Fights and RLVS under a protocol that removes duplicated clips, groups
+clips of the same scene, takes every decision on out-of-fold predictions
+of a grouped four-fold cross-validation, and uses each test split once.
+Under this protocol the modules give a significant gain on Hockey Fights
+when the backbone is fine-tuned conventionally (+1.25 out-of-fold points,
+$p=0.006$), and no measurable gain on RWF-2000 once the training recipe is
+tuned ($-0.04$ points, $p=0.78$, three seeds), where the recipe itself is
+worth 1.6 to 1.9 points. Six Kinetics backbones trained under the same
+protocol place X3D-M at 90.9 out-of-fold and 87.4\% test accuracy with
+4.7 GFLOPs, within 3.7 points of an 86M-parameter VideoMAE-B teacher.
+Selecting the epoch on the test split, as is common on these benchmarks,
+adds 0.8 points on average, which is more than most reported architectural
+gains.
 \end{abstract}
 
 \begin{IEEEkeywords}
 violence detection, video action recognition, surveillance video,
-efficient 3D CNN, motion attention, knowledge distillation
+efficient 3D CNN, motion attention, evaluation protocol
 \end{IEEEkeywords}
 
 %======================================================================
@@ -66,12 +67,12 @@ efficient 3D CNN, motion attention, knowledge distillation
 \label{sec:intro}
 
 Closed-circuit television is now installed at a scale that human
-monitoring cannot match. An estimated 770 million surveillance cameras were
-in operation by the end of 2019~\cite{cnbc2019}, while the ability of an
-observer to detect rare signals during continuous monitoring starts to
+monitoring cannot match. An estimated 770 million surveillance cameras
+were in operation by the end of 2019~\cite{cnbc2019}, while the ability of
+an observer to detect rare signals during continuous monitoring starts to
 decline within the first twenty minutes~\cite{mackworth1948}. Automatic
-violence detection addresses this mismatch by flagging the few streams that
-need attention and leaving the decision to the operator.
+violence detection addresses this mismatch by flagging the few streams
+that need attention and leaving the decision to the operator.
 
 The task is harder than generic action recognition in three respects.
 Violent events are brief and involve fast, irregular movement; the people
@@ -84,84 +85,71 @@ networks~\cite{c3d,i3d,slowfast,x3d} and video
 transformers~\cite{timesformer,videoswin}.
 
 A practical detector must also be cheap, because it runs continuously on
-every camera of an installation. Recent accuracy gains on the RWF-2000
-benchmark~\cite{rwf2000} have come from models far outside this budget.
-CUE-Net~\cite{cuenet} reports 94.0\% with 354M parameters and about
-5.8~TFLOPs per clip, and masked-autoencoder transformers report 91.8--92.4\%
-with 67M to 305M parameters~\cite{videomae,mixvit}. Lightweight
-detectors~\cite{rwf2000,sepconvlstm,mdcn,biltma} report 87--90\% with a few
-million parameters or fewer. This paper works in the second regime and asks
-what limits a compact 3D convolutional network in it.
+every camera of an installation. The most accurate models on
+RWF-2000~\cite{rwf2000} are far outside this budget: CUE-Net~\cite{cuenet}
+reports 94.0\% with 354M parameters and about 5.8~TFLOPs per clip, and
+masked-autoencoder transformers report 91.8--92.4\% with 67M to 305M
+parameters~\cite{videomae,mixvit}. A second line of
+work~\cite{rwf2000,sepconvlstm,mdcn,biltma} stays within a few GFLOPs and
+reports 87--90\%, usually by adding a module to a compact backbone: a
+motion branch, an attention block, or a wider kernel. This paper asks how
+much such additions contribute once they are measured carefully.
 
-We see three limitations. First, a 3D backbone receives motion only
-implicitly, as changes of appearance between frames that it must learn to
-extract. The frame difference is a direct and nearly free motion cue that
-is effective on this benchmark~\cite{sepconvlstm}, but prior detectors
-process it in a second stream, which doubles the backbone cost. Second, the
-receptive field of the early stages is narrow. X3D uses $3\times3$ spatial
-kernels in all its channel-wise convolutions, including the two stages that
-run at $56\times56$ and $28\times28$, where small and fast displacements are
-still resolved. Third, with 1{,}600 training clips, fine-tuning a small
-pre-trained backbone falls well short of large pre-trained transformers,
-and the size of this gap is hard to judge from published numbers, because
-the benchmark has no validation split and the procedure used to select
-checkpoints is often not reported.
+We study two of them on X3D-M~\cite{x3d}, both designed to be as cheap as
+possible. Motion Attention converts a multi-scale frame difference into
+four learnable temporal modes and uses them to rescale the Res4 features
+within a bounded range; the wide-kernel convolution enlarges the
+channel-wise kernels of Res2 and Res3 to $5\times5$ through a
+zero-initialised ring that is trained in its own learning-rate group and
+fused into a single kernel afterwards. Both start as the identity, so
+training begins from the pre-trained function, and together they add 36K
+parameters and 0.7 GFLOPs.
 
-We address the first two limitations with two modules attached to
-X3D-M~\cite{x3d}. Motion Attention converts a multi-scale frame-difference
-map into four learnable temporal modes and uses them to rescale the Res4
-features per channel and per position, within a bounded range. The
-wide-kernel convolution enlarges the channel-wise kernels of Res2 and Res3
-from $3\times3$ to $5\times5$ by adding a zero-initialised outer ring. The
-ring is kept as a separate tensor during training, so that it can use a
-larger learning rate than the pre-trained centre, and is summed into one
-kernel afterwards. Both modules are initialised as the identity, so
-training starts from the pre-trained function, which matters when 1{,}600
-clips have to adapt a network pre-trained on Kinetics. For the third
-limitation we change the training procedure rather than the network: a
-higher learning rate for the pre-trained layers, and long
-distillation~\cite{hinton2015,beyer2022} from a VideoMAE-B teacher that
-receives the same augmented clip as the student. The teacher is used only
-during training.
+Measuring their effect requires an evaluation that the benchmarks
+themselves do not provide. RWF-2000 has no validation split, so the
+checkpoint is often chosen on the test split; nine of its training clips
+are copies of test clips; and the copy of RLVS we obtained stores every
+video twice, in folders named \emph{train} and \emph{test}. We therefore
+remove duplicated clips, group clips of the same scene, split the training
+data into four grouped folds, take every decision on the out-of-fold
+predictions, and score each test split once. We also train six
+Kinetics-400 backbones ourselves under this protocol, so that the
+comparison does not rest on numbers obtained under unknown conditions.
 
-To compare these choices reliably we also revise the evaluation. Nine
-training clips of RWF-2000 are copies of test clips. We remove them,
-together with duplicate pairs inside the training split, and take every
-decision (architecture, training recipe, number of views, threshold) on
-the out-of-fold predictions of a grouped four-fold cross-validation, so
-that the test split is scored once. Under this protocol a single MA-X3D
-model reaches 87.6\% test accuracy with 3.0M parameters and 5.5 GFLOPs,
-1.5 points above conventional fine-tuning of the same network and 3.6
-points below the teacher, which has 29 times more parameters. Most of this
-gain comes from the higher learning rate; distillation raises out-of-fold
-accuracy by a further 1.2 points, but its effect on the test split is
-within the variation between models. The learned outer ring carries 30\%
-of the kernel magnitude, and removing it at test time lowers accuracy to
-80.6\%.
+The outcome is mixed, and the way it splits is the contribution of this
+paper. On Hockey Fights, where the backbone is fine-tuned conventionally,
+the two modules add 1.25 out-of-fold points ($p=0.006$). On RWF-2000 they
+add 0.44 points under the same conventional recipe and nothing once the
+recipe is tuned ($-0.04$ points, $p=0.78$, three seeds), while the recipe
+alone adds 1.6 points to X3D-M and 1.9 to MA-X3D. A control in which the
+gate keeps its parameters but receives an all-zero motion map matches the
+full module, so on RWF-2000 the gate does not owe its behaviour to the
+motion cue. Finally, selecting the epoch on the test split would add 0.8
+points on average, more than most of the architectural gains reported on
+this benchmark.
 
-Our contributions are the following.
+The contributions are:
 \begin{itemize}
-  \item A Motion Attention module that injects a multi-scale
-        frame-difference cue into a single 3D backbone through learnable
-        temporal modes and a bounded, identity-initialised gate, at 2.5K
-        parameters and 0.02 GFLOPs.
-  \item A wide-kernel reparameterisation of the channel-wise convolutions
-        of the two earliest stages, trained in its own learning-rate group
-        and fused exactly into a single $5\times5$ kernel for inference
-        (34K parameters, 0.72 GFLOPs).
-  \item A training recipe for a compact video backbone on a small
-        dataset, a higher backbone learning rate and long, view-consistent
-        distillation from a video transformer, which raises single-model
-        test accuracy from 86.1\% to 87.6\% without changing the deployed
-        network.
-  \item A leakage-free protocol for RWF-2000, with duplicate removal,
-        grouped cross-validation and a single use of the test split. The
-        split files and code are released.
+  \item A leakage-free evaluation protocol for clip-level violence
+        detection: a duplicate and same-scene audit of RWF-2000, Hockey
+        Fights and RLVS, grouped four-fold cross-validation, decisions on
+        out-of-fold predictions, and paired significance tests. The split
+        files and code are released.
+  \item Six Kinetics-400 backbones and a VideoMAE-B teacher trained under
+        this protocol on three datasets, with parameters, FLOPs and
+        measured latency, which gives a comparable accuracy--cost
+        reference for lightweight violence detection.
+  \item A study of two cheap architectural modules with matched controls,
+        showing a significant gain on one dataset under a conventional
+        recipe and none on RWF-2000 once the backbone is properly adapted.
+  \item A measurement of what the evaluation procedure itself is worth:
+        0.8 points on average from selecting the epoch on the test split,
+        against 1.6--1.9 points for the training recipe.
 \end{itemize}
 
 Section~\ref{sec:related} reviews related work, Section~\ref{sec:method}
-presents MA-X3D and its training, Section~\ref{sec:protocol} describes the
-protocol, Section~\ref{sec:results} reports the results, and
+describes the model and its training, Section~\ref{sec:protocol} the
+protocol, Section~\ref{sec:results} the results, and
 Section~\ref{sec:conclusion} concludes.
 
 %======================================================================
@@ -658,278 +646,294 @@ trains on one MI250 GCD.
 \section{Results}
 \label{sec:results}
 
-\subsection{Comparison}
+Every dataset is trained and evaluated on its own clips: the Hockey
+Fights and RLVS numbers come from models trained on those datasets, not
+from transferring an RWF-2000 model. Unless stated otherwise, all numbers
+use one temporal view and the threshold 0.5, OOF accuracy is computed over the training clips of the
+dataset and test metrics are the mean $\pm$ standard deviation of the
+single fold models. "Recipe R1" is the tuned fine-tuning schedule of
+Section~\ref{sec:training} without distillation (24 epochs) and "final"
+adds distillation and the 48-epoch schedule.
 
-Table~\ref{tab:sota} lists published results as reported by their authors
-and our models under the protocol of Section~\ref{sec:protocol}. A single
-MA-X3D model reaches 87.6\% with one view at 5.46 GFLOPs and 88.1\% with
-four views, 1.5--2.0 points above standard fine-tuning of the same network.
-Reported lightweight methods reach 89.70--90.25\%. Because their selection
-protocol is not stated, and because the published split includes the
-duplicated clips described above, the difference should not be read as a
-ranking. The VideoMAE-B teacher is 3.6 points more accurate than the
-single-view student at 29 times the parameters and 25 times the FLOPs.
+\subsection{Comparison under one protocol}
+
+Table~\ref{tab:sota} reports six Kinetics-400 backbones, our model and the
+teacher, all trained on the same folds with the same augmentation and
+recipe. Within the lightweight group, the X3D family gives the best
+accuracy per GFLOP: X3D-S reaches 88.9 OOF at 2.0 GFLOPs and X3D-M 89.3 at
+4.7 GFLOPs, above MC3-18 and R(2+1)D-18, which need eight times more
+computation. MA-X3D adds 0.7 GFLOPs to X3D-M and reaches 89.7 OOF and
+87.7\% test accuracy under the same recipe. With the final recipe both
+X3D-M and MA-X3D reach about 90.9 OOF and 87.5\% test accuracy. The
+VideoMAE-B teacher remains 1.6 OOF points and 3.7 test points ahead at 29
+times the parameters and 25 times the computation.
+
+Published results on RWF-2000 range from 87.25\% (Flow Gated
+Network~\cite{rwf2000}) to 90.25\% (BiLTMA~\cite{biltma}) for lightweight
+models and up to 94.0\% for CUE-Net~\cite{cuenet} with 354M parameters.
+These numbers are not directly comparable with ours: they are obtained on
+the official split without stating how the checkpoint was chosen, and that
+split contains the duplicated clips described in
+Section~\ref{sec:protocol}. Section~\ref{sec:selection} quantifies what
+the selection alone is worth.
 
 \begin{table}[t]
   \centering
-  \caption{RWF-2000 test accuracy. Upper part: as reported, selection
-  protocol not stated. Lower part: this paper, grouped 4-fold protocol,
-  single model (mean $\pm$ std over the fold models).}
+  \caption{RWF-2000 under the protocol of Section~\ref{sec:protocol}. All
+  rows are trained by us on the same folds; recipe R1 unless marked
+  "final". Test: single model, mean $\pm$ std over fold models (and seeds
+  where given). GFLOPs per view.}
   \label{tab:sota}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lccc}
-    \toprule
-    Method & Params & GFLOPs & Acc. (\%) \\
-    \midrule
-    ConvLSTM~\cite{convlstm}           & --     & --    & 77.00 \\
-    C3D~\cite{c3d}                     & --     & --    & 82.75 \\
-    Flow Gated Net~\cite{rwf2000}      & --     & --    & 87.25 \\
-    SepConvLSTM~\cite{sepconvlstm}     & --     & --    & 89.75 \\
-    MDCN~\cite{mdcn}                   & $<$1M  & --    & 89.70 \\
-    BiLTMA~\cite{biltma}               & 4.48M  & --    & 90.25 \\
-    VideoMAE~\cite{videomae,mixvit}    & 67--305M & --  & 91.8--92.4 \\
-    CUE-Net~\cite{cuenet}              & 354M   & 5826  & 94.00 \\
-    \midrule
-    X3D-M, final recipe                & 2.98M  & 4.73  & -- \\ % TODO p0_x3d_m
-    MA-X3D, standard fine-tuning       & 3.01M  & 5.46  & 86.1 $\pm$ 1.0 \\
-    MA-X3D (1 view)                    & 3.01M  & 5.46  & 87.6 $\pm$ 0.7 \\
-    MA-X3D (4 views)                   & 3.01M  & 21.9  & 88.1 $\pm$ 0.6 \\
-    VideoMAE-B teacher                 & 86.2M  & 135   & 91.2 $\pm$ 0.8 \\
-    \bottomrule
-  \end{tabular}
-  % TODO: fill the missing params/GFLOPs of prior work from their papers.
-\end{table}
-
-Table~\ref{tab:main} gives the full metrics. The recipe raises recall on the
-violent class from 0.823 to 0.867 at a similar precision, and raises AUC
-from 0.923 to 0.949. Averaging the four fold models with four views each
-(87.4 GFLOPs per clip) gives 89.25\% accuracy, 0.889 F1 and 0.960 AUC;
-since this multiplies the cost by 16, we do not use it as our main result.
-
-\begin{table}[t]
-  \centering
-  \caption{Out-of-fold (1{,}583 clips) and test metrics (single model,
-  mean over the four fold models; std of accuracy in Table~\ref{tab:sota}).
-  Violent class for P, R and F1.}
-  \label{tab:main}
   \setlength{\tabcolsep}{2.5pt}
-  \begin{tabular}{lcccccc}
+  \begin{tabular}{lccccc}
     \toprule
-    & \multicolumn{2}{c}{OOF} & \multicolumn{4}{c}{Test} \\
-    \cmidrule(lr){2-3}\cmidrule(lr){4-7}
-    Model & Acc & F1 & P & R & F1 & AUC \\
+    Model & Params & GFLOPs & OOF acc & Test acc & Test F1 \\
     \midrule
-    MA-X3D, standard FT      & 88.44 & 0.885 & 0.892 & 0.823 & 0.856 & 0.923 \\
-    MA-X3D (1 view)          & 91.03 & 0.912 & 0.883 & 0.867 & 0.875 & 0.949 \\
-    MA-X3D (4 views)         & 91.28 & 0.913 & 0.902 & 0.854 & 0.877 & 0.953 \\
-    VideoMAE-B teacher       & 92.48 & 0.926 & 0.902 & 0.925 & 0.913 & 0.967 \\
+    X3D-XS~\cite{x3d}        & 2.98M  & 0.60  & 83.77 & 79.3 $\pm$ 0.7 & 0.779 \\
+    X3D-S~\cite{x3d}         & 2.98M  & 1.96  & 88.88 & 85.0 $\pm$ 0.3 & 0.849 \\
+    X3D-M~\cite{x3d}         & 2.98M  & 4.73  & 89.26 & 86.2 $\pm$ 0.5 & 0.858 \\
+    S3D~\cite{s3d}           & 7.91M  & 17.98 & 78.77 & 76.9 $\pm$ 0.4 & 0.787 \\
+    MC3-18~\cite{r2plus1d}   & 11.49M & 43.34 & 87.43 & 85.5 $\pm$ 0.7 & 0.855 \\
+    R(2+1)D-18~\cite{r2plus1d} & 31.30M & 40.52 & 88.69 & 86.7 $\pm$ 0.9 & 0.866 \\
+    MA-X3D (ours)            & 3.01M  & 5.46  & 89.70 & 87.7 $\pm$ 0.9 & 0.874 \\
+    \midrule
+    X3D-M, final, 3 seeds    & 2.98M  & 4.73  & 90.90 & 87.4 $\pm$ 0.9 & 0.871 \\
+    MA-X3D, final, 3 seeds   & 3.01M  & 5.46  & 90.86 & 87.5 $\pm$ 0.6 & 0.873 \\
+    \midrule
+    VideoMAE-B~\cite{videomae} (teacher) & 86.2M & 135 & 92.48 & 91.2 $\pm$ 0.8 & 0.913 \\
     \bottomrule
   \end{tabular}
-  % TODO: 3-seed values.
 \end{table}
 
-\subsection{Where does the improvement come from?}
-\label{sec:ablation}
+\subsection{What the modules contribute}
+\label{sec:modules}
 
-The comparison with conventional fine-tuning mixes two changes, the
-network and the training recipe. We separate them with three groups of
-experiments, each of which changes one factor. Every comparison is paired:
-the two models are trained on the same folds and evaluated on the same
-clips. We report the difference in OOF accuracy over the 1{,}583 clips with
-a 95\% bootstrap interval, the exact McNemar test on the paired OOF
-predictions, and the mean difference of the single fold models on the test
-split. Rows with three seeds report the mean over the 12 fold models.
-% TODO: 3-seed values for every row marked [s0].
-
-\textbf{Network and recipe (Table~\ref{tab:factorial}).} X3D-M and MA-X3D
-are each trained with the conventional recipe and with the final recipe.
-If the modules only helped because of the recipe, or the recipe only
-because of the modules, the gains would not appear in both columns.
-% TODO: fill Table IV from q0 (X3D-M conventional), e00, p0, e11 (3 seeds each) and
-% describe: gain of the modules under each recipe, gain of the recipe for each network.
+Table~\ref{tab:factorial} crosses the network with the training recipe.
+Under the conventional recipe the modules add 0.44 OOF points
+($[-0.76, +1.58]$, $p = 0.52$); under the final recipe the difference is
+$-0.04$ points ($[-0.72, +0.63]$, $p = 0.78$, three seeds). The recipe, in
+contrast, adds 1.6 points to X3D-M and 1.9 points to MA-X3D. On this
+dataset the two modules therefore do not improve a backbone that is
+already well adapted.
 
 \begin{table}[t]
   \centering
-  \caption{Network $\times$ training recipe (1 view). OOF accuracy over
-  1{,}583 clips / single-model test accuracy, mean over seeds and folds.}
+  \caption{RWF-2000, network $\times$ recipe: OOF accuracy / single-model
+  test accuracy. Three seeds except X3D-M with the conventional recipe.}
   \label{tab:factorial}
   \setlength{\tabcolsep}{4pt}
   \begin{tabular}{lcc}
     \toprule
     & Conventional recipe & Final recipe \\
     \midrule
-    X3D-M   & -- / --          & -- / -- \\ % TODO q0 | p0
-    MA-X3D  & 88.44 / 86.1     & 91.03 / 87.6 \\ % [s0] e00 | e11
+    X3D-M  & 88.00 / 86.1 & 90.90 / 87.4 \\
+    MA-X3D & 88.99 / 86.6 & 90.86 / 87.5 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\textbf{Components and controls (Table~\ref{tab:ablation}).} Under the
-final recipe we add each module to X3D-M alone, and we compare each module
-with a control that has the same parameters and cost but lacks the
-property we attribute the gain to. For Motion Attention, the control keeps
-the gate but feeds it an all-zero motion map, so any gain of the control
-comes from the extra gating parameters rather than from motion. For the
-wide kernel, the first control inflates the kernel to a dense $5\times5$
-tensor with a zero ring, so the ring shares the backbone learning rate; the
-second keeps the reparameterisation but places the ring in the backbone
-group. A third check needs no training: we set the learned ring of the
-full model to zero at test time. This lowers single-model accuracy from
-87.6\% to 80.6\%; the ring carries 30\% of the kernel magnitude (mean over
-the eight widened convolutions), so the trained network relies on the added
-spatial support.
-% TODO: describe p0, p1, p2, p6, p4, p5 with differences, intervals and p-values.
+Table~\ref{tab:ablation} separates the two modules and adds the controls.
+Neither module alone changes OOF accuracy significantly, and the control
+that keeps the Motion Attention parameters but feeds the gate an all-zero
+motion map performs as well as the module with the real motion map. The
+gain of the gate on this dataset therefore cannot be attributed to the
+motion cue. The wide kernel behaves differently: the learned ring is used
+by the trained network, since setting it to zero at test time lowers
+single-model accuracy from 87.6\% to 80.6\%, and the ring carries 30\% of
+the kernel magnitude; but removing the ring from training (the X3D-M row)
+costs no accuracy, so the network reaches the same performance with
+$3\times3$ kernels.
+% TODO: add p4 (dense 5x5) and p5 (ring at backbone lr) rows when they finish.
 
 \begin{table}[t]
   \centering
-  \caption{Components and controls under the final recipe (1 view).
-  $\Delta$: OOF accuracy difference to X3D-M with 95\% bootstrap interval;
-  $p$: exact McNemar test against X3D-M on the OOF predictions.}
+  \caption{RWF-2000, final recipe. $\Delta$: OOF accuracy against X3D-M
+  with a 95\% bootstrap interval; $p$: exact McNemar test. One seed unless
+  stated.}
   \label{tab:ablation}
   \setlength{\tabcolsep}{2pt}
-  \begin{tabular}{lccccc}
+  \begin{tabular}{lcccc}
     \toprule
-    Model & Params & OOF Acc & $\Delta$ & $p$ & Test Acc \\
+    Model & OOF acc & $\Delta$ & $p$ & Test acc \\
     \midrule
-    X3D-M                              & 2.98M & -- & -- & -- & -- \\ % TODO p0
-    + MA                               & 2.98M & -- & -- & -- & -- \\ % TODO p1
-    + MA, motion map set to zero       & 2.98M & -- & -- & -- & -- \\ % TODO p6
-    + WK                               & 3.01M & -- & -- & -- & -- \\ % TODO p2
-    + WK, dense $5\times5$             & 3.01M & -- & -- & -- & -- \\ % TODO p4
-    + WK, ring at backbone rate        & 3.01M & -- & -- & -- & -- \\ % TODO p5
-    + MA + WK (MA-X3D)                 & 3.01M & 91.03 & -- & -- & 87.6 \\ % [s0]
-    \quad ring set to zero at test     & 3.01M & -- & -- & -- & 80.6 \\
+    X3D-M (3 seeds)            & 90.90 & --     & --   & 87.4 $\pm$ 0.9 \\
+    + MA                       & 90.65 & $-0.19$ [$-0.95$, $+0.57$] & 0.75 & 87.9 $\pm$ 0.5 \\
+    \quad gate, motion zeroed  & 91.09 & $+0.25$ [$-0.63$, $+1.20$] & 0.68 & 88.4 $\pm$ 1.2 \\
+    + WK                       & 91.03 & $+0.19$ [$-0.82$, $+1.20$] & 0.81 & 88.0 $\pm$ 0.9 \\
+    + MA + WK (3 seeds)        & 90.86 & $-0.04$ [$-0.72$, $+0.63$] & 0.78 & 87.5 $\pm$ 0.6 \\
+    \quad ring zeroed at test  & --    & --     & --   & 80.6 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\textbf{Training recipe (Table~\ref{tab:recipe}).} For the same network we
-change the recipe one step at a time. Raising the backbone learning rate
-from $10^{-5}$ to $5\times10^{-5}$ adds 1.26 OOF points ($[+0.13, +2.40]$,
-$p=0.040$) and 1.6 points on the test split: with the lower rate, training
-accuracy stayed below validation accuracy and most folds stopped early,
-which suggests that the backbone was not adapting enough. Distillation with
-the conventional 24-epoch schedule leaves OOF accuracy unchanged. With 48
-epochs it adds 1.33 OOF points over R1 ($[+0.32, +2.34]$, $p=0.015$), and
-the selected epochs move from 9--20 to 20--45. Because R3 differs from R1
-in both the teacher and the schedule length, the control R1$'$ trains for
-48 epochs without the teacher; the effect of distillation is the
-difference between R3 and R1$'$. On the test split, the single-model
-difference between R3 and R1 is $-0.06 \pm 0.67$ points, so the OOF gain of
-distillation is not visible there at this sample size.
-% TODO: e19 (R1') and 3 seeds; rewrite the last two sentences accordingly.
-
-The lower part of Table~\ref{tab:recipe} lists changes that were tried and
-not adopted because they did not improve OOF accuracy over the final recipe
-or cost more: a larger distillation weight, a higher backbone rate,
-fine-tuning Res4 ($+0.82$ OOF points over R1, $p=0.17$), the deeper X3D-L
-backbone (5.4M parameters), and 32 frames per clip (10.9 GFLOPs).
+The picture is different on Hockey Fights (Table~\ref{tab:hockey}). Under
+recipe R1 the modules add 1.25 OOF points ($[+0.50, +2.13]$, $p = 0.006$)
+and 0.8 points of test accuracy; under the final recipe the gain falls to
+0.50 points ($p = 0.34$). Taken together with RWF-2000, the modules help
+when the backbone is not fully adapted to the data and stop helping when
+the training recipe closes that gap. A further observation supports this
+reading: on RWF-2000 the only group of clips where MA-X3D is ahead of
+X3D-M is the quartile with the strongest motion ($+1.26$ points), while the
+three quieter quartiles show no difference.
 
 \begin{table}[t]
   \centering
-  \caption{Training recipe for the same network (MA-X3D, 1 view, threshold
-  0.5). $p$: McNemar test against the row above on the OOF predictions.
-  Test: single model, mean $\pm$ std over the fold models.}
-  \label{tab:recipe}
-  \setlength{\tabcolsep}{2pt}
-  \begin{tabular}{llccc}
+  \caption{Hockey Fights (797 training / 200 test clips, one seed).}
+  \label{tab:hockey}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{lccc}
     \toprule
-    & Recipe & OOF Acc & $p$ & Test Acc \\
+    Model & OOF acc & Test acc & Test F1 \\
     \midrule
-    R0 & conventional (lr $10^{-5}$, 24 ep.)        & 88.44 & --    & 86.1 $\pm$ 1.0 \\
-    R1 & backbone lr $5\times10^{-5}$               & 89.70 & 0.040 & 87.7 $\pm$ 0.9 \\
-    R1$'$ & R1, 48 ep., no teacher                  & --    & --    & -- \\ % TODO e19
-    R2 & R1 + distillation, 24 ep.                  & 89.83 & --    & 87.2 $\pm$ 0.8 \\
-    R3 & R1 + distillation, 48 ep. (final)          & 91.03 & 0.015 & 87.6 $\pm$ 0.7 \\
-    \midrule
-    & R2 with $\alpha = 0.9$                        & 90.27 & --    & 88.1 $\pm$ 0.5 \\
-    & R1 with lr $10^{-4}$                          & 89.89 & --    & 87.4 $\pm$ 1.1 \\
-    & R1 + Res4 fine-tuned                          & 90.52 & 0.17  & 88.2 $\pm$ 0.7 \\
-    & R1 with X3D-L backbone                        & 89.83 & --    & 87.2 $\pm$ 0.5 \\
-    & R0 with 32 frames                             & 88.76 & --    & 85.8 $\pm$ 2.6 \\
+    X3D-M, R1      & 94.73 & 94.9 $\pm$ 1.0 & 0.947 \\
+    MA-X3D, R1     & 95.98 & 95.7 $\pm$ 0.8 & 0.956 \\
+    X3D-M, final   & 96.11 & 96.1 $\pm$ 1.2 & 0.960 \\
+    MA-X3D, final  & 96.61 & 95.6 $\pm$ 0.2 & 0.955 \\
+    VideoMAE-B     & 97.37 & 94.9 $\pm$ 0.2 & 0.946 \\
     \bottomrule
   \end{tabular}
-  % p for R3 is against R1 (R2 is shown for reference). TODO: 3 seeds;
-  % add e16 (96 ep.), e17 (48 ep., alpha 0.9), e18 (48 ep. + Res4) if they change a decision.
+\end{table}
+% TODO: RLVS table, same rows, once the runs finish.
+
+\subsection{What the training recipe contributes}
+
+Table~\ref{tab:recipe} changes the recipe one step at a time for MA-X3D.
+Raising the backbone learning rate from $10^{-5}$ to $5\times10^{-5}$ adds
+1.26 OOF points ($p = 0.040$): with the lower rate, training accuracy
+stayed below validation accuracy and most folds stopped early, so the
+backbone was not adapting enough. Distillation with the conventional
+24-epoch schedule changes nothing. With 48 epochs it adds 1.33 points over
+R1 ($p = 0.015$), but the control that trains for 48 epochs without a
+teacher reaches 90.46, so the part attributable to the teacher is 0.57
+points ($[-0.51, +1.64]$, $p = 0.37$) and is not significant. The useful
+ingredients are therefore the learning rate and the longer schedule; the
+teacher itself, although 1.6 points better than the student, transfers
+little to a network of this size.
+
+\begin{table}[t]
+  \centering
+  \caption{RWF-2000, training recipe for MA-X3D. $p$ against the row named
+  in the text; seed 0 unless stated.}
+  \label{tab:recipe}
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{llcc}
+    \toprule
+    & Recipe & OOF acc & Test acc \\
+    \midrule
+    R0  & conventional (lr $10^{-5}$, 24 ep., 3 seeds) & 88.99 & 86.6 $\pm$ 1.0 \\
+    R1  & backbone lr $5\times10^{-5}$                 & 89.70 & 87.7 $\pm$ 0.9 \\
+    R1$'$ & R1, 48 epochs, no teacher                  & 90.46 & 87.9 $\pm$ 0.6 \\
+    R2  & R1 + distillation, 24 ep.                    & 89.83 & 87.2 $\pm$ 0.8 \\
+    R3  & R1 + distillation, 48 ep. (final, 3 seeds)   & 90.86 & 87.5 $\pm$ 0.6 \\
+    \midrule
+    & R2 with $\alpha = 0.9$                           & 90.27 & 88.1 $\pm$ 0.5 \\
+    & R1 with lr $10^{-4}$                             & 89.89 & 87.4 $\pm$ 1.1 \\
+    & R1 + Res4 fine-tuned                             & 90.52 & 88.2 $\pm$ 0.7 \\
+    & R1 with X3D-L backbone (5.4M)                    & 89.83 & 87.2 $\pm$ 0.5 \\
+    & R0 with 32 frames (10.9 GFLOPs)                  & 88.76 & 85.8 $\pm$ 2.6 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\subsection{Motion Attention design}
+\subsection{What the protocol is worth}
+\label{sec:selection}
 
-% TODO (seed 0, final recipe): one step only (p7), raw map without temporal modes
-% (p8), gate after Res3 (p9) and after Res5 (p10), each against MA-X3D with the
-% McNemar test. Keep as a short table or two sentences, depending on space.
+Every run logs test accuracy after each epoch, without using it for any
+decision. Choosing the epoch on the test split instead of on the
+validation fold would raise the reported single-model accuracy by 0.38 to
+1.38 points depending on the model (mean 0.81, maximum over folds 1.75).
+On top of this, nine training clips of the official RWF-2000 release are
+copies of test clips, so a model trained on that release has seen part of
+its test set. An improvement of one point on this
+benchmark is therefore within the range that the evaluation procedure
+alone can produce, which is the reason for the protocol of
+Section~\ref{sec:protocol}.
 
 \subsection{Inference options}
 \label{sec:options}
 
-On the OOF predictions, four views raise accuracy by 0.25 points over one
-view (0.4 points on the test split) at four times the cost. Horizontal-flip
-test-time augmentation lowers OOF accuracy slightly, and tuning the
-threshold on $[0.30, 0.70]$ selects 0.50--0.52 with no measurable gain. We
-therefore use one view and a threshold of 0.5 for deployment and report
-four views as an option.
-
-\subsection{Qualitative analysis}
-
-% TODO: Grad-CAM with and without Motion Attention, gate maps on violent and
-% non-violent clips, and typical errors (crowded scenes, distant actors,
-% sport and horseplay). Generate with `ma-x3d visualize` on the final model.
+On the OOF predictions, four temporal views raise accuracy by 0.25 points
+over a single view (0.4 points on the test split) at four times the cost;
+horizontal-flip augmentation lowers OOF accuracy slightly; tuning the
+threshold on $[0.30, 0.70]$ selects 0.50--0.52 and brings no measurable
+gain. Averaging the four fold models, which multiplies the cost by four
+again, gives 89.25\% test accuracy. We report the single model with one
+view as the deployed configuration.
 
 \subsection{Cost}
 
 Table~\ref{tab:cost} compares the deployed student with the teacher. The
-student has 29 times fewer parameters and 25 times fewer FLOPs, and is
-about twice as fast on CPU. On the MI250 GPU the two models have similar
-latency and throughput: depthwise 3D convolutions are limited by memory
-bandwidth on this hardware, while the dense matrix products of the
-transformer run close to peak. The advantage of the student is therefore
-largest on CPUs and memory-limited devices.
-% TODO: one edge-device measurement (e.g. Jetson or laptop CPU).
+student has 29 times fewer parameters and 25 times fewer FLOPs and is
+twice as fast on CPU. On the MI250 GPU the two have similar latency:
+channel-wise 3D convolutions are limited by memory bandwidth, while the
+dense matrix products of the transformer run close to peak. The advantage
+of the compact model is therefore largest on CPUs and memory-limited
+devices, which is where a per-camera detector runs.
 
 \begin{table}[t]
   \centering
   \caption{Cost of one model at $16\times224\times224$. GPU: one AMD MI250
-  GCD shared with other jobs; CPU: AMD EPYC 7413, 16 threads, PyTorch.}
+  GCD; CPU: AMD EPYC 7413, 16 threads, PyTorch.}
   \label{tab:cost}
   \setlength{\tabcolsep}{3pt}
   \begin{tabular}{lcc}
     \toprule
     & MA-X3D & VideoMAE-B \\
     \midrule
-    Parameters                         & 3.01M & 86.2M \\
-    GFLOPs per view                    & 5.46  & 135 \\
-    GPU latency, batch 1, fp32 (ms)    & 30    & 24 \\
-    GPU throughput, batch 16, fp16 (clips/s) & 118 & 136 \\
-    CPU latency, batch 1 (ms)          & 208   & 400 \\
-    Training per fold (min)            & 48    & 12 \\
-    Peak training memory (GB)          & 5.8   & 9.4 \\
+    Parameters                               & 3.01M & 86.2M \\
+    GFLOPs per view                          & 5.46  & 135 \\
+    GPU latency, batch 1, fp32 (ms)          & 30    & 24 \\
+    GPU throughput, batch 16, fp16 (clips/s) & 118   & 136 \\
+    CPU latency, batch 1 (ms)                & 208   & 400 \\
+    Training per fold (min)                  & 48    & 12 \\
+    Peak training memory (GB)                & 5.8   & 9.4 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
+\subsection{Qualitative analysis}
+
+% TODO: Grad-CAM with and without Motion Attention, gate maps, error cases.
+The gate reacts to the class: the mean absolute gain $|G|$ over the OOF
+clips is 0.059 on violent clips and 0.050 on non-violent ones, so the
+modulation of the Res4 features stays within a few per cent and is
+slightly stronger when violence is present.
+
 %======================================================================
 \section{Limitations}
 
-The results come from one benchmark whose test split has 400 clips, so one
-point of accuracy is four clips. For every model, including the teacher,
-test accuracy is 1--3 points below OOF accuracy, which suggests that the
-test clips are harder than the training clips. The static crop assumes a
-fixed camera. Training requires a teacher that is 29 times larger than the
-student. The model classifies trimmed clips and does not localise events in
-time. The Hockey Fight results of our earlier work and the effect of the
-person-centred crop were not re-evaluated under the present protocol.
+Our conclusions rest on three datasets of 1{,}000 to 2{,}000 clips, whose
+test splits hold 200 to 400 clips, so one point of accuracy is two to four
+clips; this is why we report paired intervals and tests rather than single
+numbers. The modules were evaluated in the configuration proposed for
+them, on a single backbone family: a different placement or a larger
+motion branch may behave differently, and our finding that they do not
+help a tuned X3D-M should not be read as a statement about motion cues in
+general. The distillation study uses one teacher, and the schedule control
+shows that most of its effect is the longer schedule; a stronger or
+multi-teacher setup was not tried. Test accuracy is 1--3 points below
+out-of-fold accuracy for every model, including the teacher, which
+suggests that the test clips are harder than the training clips rather
+than that the models overfit the folds. Finally, the person-centred crop
+assumes a fixed camera, and all models classify trimmed clips without
+localising the event in time.
 
 %======================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-MA-X3D adds a frame-difference gate and a fused wide kernel to X3D-M at a
-cost of 36K parameters. Trained with a higher backbone learning rate and
-long, view-consistent distillation from a video transformer, a single model
-with 3.0M parameters reaches 87.6\% on RWF-2000 with one view, under a
-protocol in which the test split takes no part in any decision. Future work
-includes temporal localisation on untrimmed streams, measurements on edge
-devices, and cross-dataset evaluation under the same protocol.
+We evaluated two cheap additions to a compact 3D CNN for violence
+detection under a protocol that removes duplicated clips, keeps clips of
+the same scene together, and never uses the test split for a decision. The
+additions help where the backbone is under-adapted, significantly so on
+Hockey Fights, and give no measurable gain on RWF-2000 once the training
+recipe is tuned, where the recipe is worth more than either module. Under
+the same protocol, a plain X3D-M with 3.0M parameters and 4.7 GFLOPs
+reaches 90.9\% out-of-fold and 87.4\% test accuracy on RWF-2000, within
+3.7 points of an 86M-parameter video transformer, and selecting the epoch
+on the test split would inflate reported accuracy by 0.8 points on
+average. We release the splits, the audit and the training code so that
+future lightweight detectors can be compared on the same basis.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

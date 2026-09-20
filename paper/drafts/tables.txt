@@ -1,0 +1,72 @@
+== Main comparison, RWF-2000 (recipe R1 unless stated)
+X3D-XS                                       seeds 1 | OOF 83.77 (±0.00) F1 0.836 | test 79.3 ± 0.7 P 0.834 R 0.730 F1 0.779 AUC 0.880
+X3D-S                                        seeds 1 | OOF 88.88 (±0.00) F1 0.889 | test 85.0 ± 0.3 P 0.853 R 0.846 F1 0.849 AUC 0.932
+X3D-M                                        seeds 1 | OOF 89.26 (±0.00) F1 0.895 | test 86.2 ± 0.5 P 0.883 R 0.835 F1 0.858 AUC 0.932
+S3D                                          seeds 1 | OOF 78.77 (±0.00) F1 0.808 | test 76.9 ± 0.4 P 0.733 R 0.860 F1 0.787 AUC 0.874
+MC3-18                                       seeds 1 | OOF 87.43 (±0.00) F1 0.880 | test 85.5 ± 0.7 P 0.857 R 0.852 F1 0.855 AUC 0.923
+R(2+1)D-18                                   seeds 1 | OOF 88.69 (±0.00) F1 0.890 | test 86.7 ± 0.9 P 0.870 R 0.863 F1 0.866 AUC 0.933
+MA-X3D (R1)                                  seeds 1 | OOF 89.70 (±0.00) F1 0.899 | test 87.7 ± 0.9 P 0.892 R 0.857 F1 0.874 AUC 0.944
+X3D-M, final recipe                          seeds 3 | OOF 90.90 (±0.09) F1 0.911 | test 87.4 ± 0.9 P 0.893 R 0.851 F1 0.871 AUC 0.944
+MA-X3D, final                                seeds 3 | OOF 90.86 (±0.16) F1 0.910 | test 87.5 ± 0.6 P 0.887 R 0.860 F1 0.873 AUC 0.947
+VideoMAE-B teacher                           seeds 1 | OOF 92.48 (±0.00) F1 0.926 | test 91.2 ± 0.8 P 0.902 R 0.925 F1 0.913 AUC 0.967
+
+== 2x2 network x recipe
+X3D-M conventional                           seeds 1 | OOF 88.00 (±0.00) F1 0.880 | test 86.1 ± 0.8 P 0.896 R 0.818 F1 0.855 AUC 0.921
+MA-X3D conventional                          seeds 3 | OOF 88.99 (±0.39) F1 0.890 | test 86.6 ± 1.0 P 0.895 R 0.829 F1 0.860 AUC 0.928
+X3D-M final                                  seeds 3 | OOF 90.90 (±0.09) F1 0.911 | test 87.4 ± 0.9 P 0.893 R 0.851 F1 0.871 AUC 0.944
+MA-X3D final                                 seeds 3 | OOF 90.86 (±0.16) F1 0.910 | test 87.5 ± 0.6 P 0.887 R 0.860 F1 0.873 AUC 0.947
+modules, conventional recipe                 seeds 1 | dOOF +0.44 [-0.76, +1.58] McNemar p 0.5154 (max over seeds 0.5154)
+modules, final recipe                        seeds 3 | dOOF -0.04 [-0.72, +0.63] McNemar p 0.7798 (max over seeds 1.0000)
+
+== Components and controls (final recipe), each against X3D-M
++ MA                                         seeds 1 | OOF 90.65 (±0.00) F1 0.908 | test 87.9 ± 0.5 P 0.896 R 0.857 F1 0.876 AUC 0.948
+   vs X3D-M                                  seeds 1 | dOOF -0.19 [-0.95, +0.57] McNemar p 0.7493 (max over seeds 0.7493)
++ MA gate, zero motion                       seeds 1 | OOF 91.09 (±0.00) F1 0.912 | test 88.4 ± 1.2 P 0.893 R 0.874 F1 0.883 AUC 0.948
+   vs X3D-M                                  seeds 1 | dOOF +0.25 [-0.63, +1.20] McNemar p 0.6835 (max over seeds 0.6835)
++ WK                                         seeds 1 | OOF 91.03 (±0.00) F1 0.911 | test 88.0 ± 0.9 P 0.887 R 0.871 F1 0.879 AUC 0.947
+   vs X3D-M                                  seeds 1 | dOOF +0.19 [-0.82, +1.20] McNemar p 0.8072 (max over seeds 0.8072)
++ WK dense 5x5                               (not finished)
+   vs X3D-M                                  (not finished)
++ WK ring at backbone lr                     (not finished)
+   vs X3D-M                                  (not finished)
++ MA + WK                                    seeds 3 | OOF 90.86 (±0.16) F1 0.910 | test 87.5 ± 0.6 P 0.887 R 0.860 F1 0.873 AUC 0.947
+   vs X3D-M                                  seeds 3 | dOOF -0.04 [-0.72, +0.63] McNemar p 0.7798 (max over seeds 1.0000)
+MA vs zero-motion control (needs p1 with MA only) seeds 1 | dOOF -0.44 [-1.45, +0.57] McNemar p 0.4570 (max over seeds 0.4570)
+
+== Training recipe (MA-X3D)
+R0 conventional                              seeds 3 | OOF 88.99 (±0.39) F1 0.890 | test 86.6 ± 1.0 P 0.895 R 0.829 F1 0.860 AUC 0.928
+R1 lr 5e-5                                   seeds 1 | OOF 89.70 (±0.00) F1 0.899 | test 87.7 ± 0.9 P 0.892 R 0.857 F1 0.874 AUC 0.944
+R1' 48 ep, no teacher                        seeds 1 | OOF 90.46 (±0.00) F1 0.906 | test 87.9 ± 0.6 P 0.883 R 0.875 F1 0.879 AUC 0.942
+R2 distillation 24 ep                        seeds 1 | OOF 89.83 (±0.00) F1 0.900 | test 87.2 ± 0.8 P 0.889 R 0.851 F1 0.870 AUC 0.943
+R3 distillation 48 ep                        seeds 3 | OOF 90.86 (±0.16) F1 0.910 | test 87.5 ± 0.6 P 0.887 R 0.860 F1 0.873 AUC 0.947
+R1 vs R0                                     seeds 1 | dOOF +1.26 [+0.13, +2.40] McNemar p 0.0399 (max over seeds 0.0399)
+R3 vs R1                                     seeds 1 | dOOF +1.33 [+0.32, +2.34] McNemar p 0.0154 (max over seeds 0.0154)
+R3 vs R1' (effect of the teacher)            seeds 1 | dOOF +0.57 [-0.51, +1.64] McNemar p 0.3682 (max over seeds 0.3682)
+
+== Motion Attention design (vs MA-X3D)
+step 1 only                                  (not finished)
+   MA-X3D vs this                            (not finished)
+no temporal modes                            (not finished)
+   MA-X3D vs this                            (not finished)
+after Res3                                   (not finished)
+   MA-X3D vs this                            (not finished)
+after Res5                                   (not finished)
+   MA-X3D vs this                            (not finished)
+
+== Hockey
+X3D-M R1                                     seeds 1 | OOF 94.73 (±0.00) F1 0.946 | test 94.9 ± 1.0 P 0.981 R 0.915 F1 0.947 AUC 0.979
+MA-X3D R1                                    seeds 1 | OOF 95.98 (±0.00) F1 0.959 | test 95.7 ± 0.8 P 0.984 R 0.930 F1 0.956 AUC 0.986
+X3D-M final                                  seeds 1 | OOF 96.11 (±0.00) F1 0.961 | test 96.1 ± 1.2 P 0.987 R 0.935 F1 0.960 AUC 0.988
+MA-X3D final                                 seeds 1 | OOF 96.61 (±0.00) F1 0.966 | test 95.6 ± 0.2 P 0.982 R 0.930 F1 0.955 AUC 0.989
+VideoMAE-B teacher                           seeds 1 | OOF 97.37 (±0.00) F1 0.973 | test 94.9 ± 0.2 P 1.000 R 0.897 F1 0.946 AUC 0.996
+modules, R1                                  seeds 1 | dOOF +1.25 [+0.50, +2.13] McNemar p 0.0063 (max over seeds 0.0063)
+modules, final                               seeds 1 | dOOF +0.50 [-0.25, +1.25] McNemar p 0.3438 (max over seeds 0.3438)
+
+== RLVS
+X3D-M R1                                     (not finished)
+MA-X3D R1                                    (not finished)
+X3D-M final                                  (not finished)
+MA-X3D final                                 (not finished)
+VideoMAE-B teacher                           (not finished)
+modules, R1                                  (not finished)
+modules, final                               (not finished)
