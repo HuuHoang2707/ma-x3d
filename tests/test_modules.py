@@ -131,3 +131,18 @@ def test_diff_residual_and_burst_pool_start_as_identity():
     b = BurstPool(32)
     assert torch.allclose(b(z), z.mean((2, 3, 4), keepdim=True), atol=1e-6)
     assert b(z).shape == (2, 32, 1, 1, 1)
+
+
+def test_motion_peak_interaction():
+    from ma_x3d.models.interaction_tokens import MotionPeakInteraction
+
+    m = MotionPeakInteraction(96, peaks=4)
+    feat, motion = torch.rand(2, 96, 8, 14, 14), torch.rand(2, 1, 8, 112, 112)
+    out = m(feat, motion)
+    assert out.shape == (2, 2)
+    assert out.abs().max() == 0  # zero-initialised output: identity at start
+
+    energy = torch.zeros(1, 14, 14)
+    energy[0, 3, 3], energy[0, 10, 10] = 1.0, 0.9
+    picks = [(int(i) // 14, int(i) % 14) for i in m._select(energy)[0]]
+    assert picks[0] == (3, 3) and picks[1] == (10, 10)  # peaks, spread apart

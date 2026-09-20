@@ -36,7 +36,7 @@ def _is_ring(name: str) -> bool:
 
 def _is_new(name: str, cfg: TrainConfig) -> bool:
     if name.startswith(("motion_attn.", "eaa.", "net.classifier.", "net.fc.",
-                        "diff_residual.")):
+                        "diff_residual.", "interaction.")):
         return True
     if "pool.score" in name:  # BurstPool
         return True

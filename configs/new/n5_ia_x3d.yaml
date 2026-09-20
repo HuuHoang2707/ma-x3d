@@ -1,0 +1,8 @@
+# IA-X3D: interaction tokens + difference residual + burst pooling.
+_base_: ../exp/p0_x3d_m.yaml
+name: n5_ia_x3d
+description: X3D-M + interaction + difference residual + burst pooling
+model:
+  interaction: true
+  diff_residual: [res3, res4]
+  burst_pool: true

@@ -1,0 +1,6 @@
+# Motion-peak interaction tokens on the tuned X3D-M baseline.
+_base_: ../exp/p0_x3d_m.yaml
+name: n4_interaction
+description: X3D-M + motion-peak interaction tokens
+model:
+  interaction: true

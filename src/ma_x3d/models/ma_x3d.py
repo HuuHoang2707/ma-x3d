@@ -34,6 +34,7 @@ class MAX3D(nn.Module):
         motion_input: str = "frames",
         input_size: int = 224,
         diff_residual: nn.ModuleDict | None = None,
+        interaction: nn.Module | None = None,
     ):
         super().__init__()
         self.blocks = blocks
@@ -46,6 +47,7 @@ class MAX3D(nn.Module):
         self.motion_input = motion_input
         self.input_size = input_size
         self.diff_residual = diff_residual or nn.ModuleDict()
+        self.interaction = interaction
         self.register_buffer("mean", torch.tensor(KINETICS_MEAN).view(1, 3, 1, 1, 1), False)
         self.register_buffer("std", torch.tensor(KINETICS_STD).view(1, 3, 1, 1, 1), False)
 
@@ -53,11 +55,13 @@ class MAX3D(nn.Module):
         m = motion_map(clip, self.motion_multiscale, self.motion_clip)
         return torch.zeros_like(m) if self.motion_input == "zero" else m
 
-    def _run(self, clip: torch.Tensor, last: int) -> torch.Tensor:
+    def _run(self, clip: torch.Tensor, last: int) -> torch.Tensor:  # noqa: C901
         if clip.shape[-1] != self.input_size:  # e.g. X3D-XS/S run at 160x160
             size = (clip.shape[2], self.input_size, self.input_size)
             clip = F.interpolate(clip, size=size, mode="trilinear", align_corners=False)
-        motion = self.motion(clip) if self.motion_attn is not None else None
+        needs_motion = self.motion_attn is not None or self.interaction is not None
+        motion = self.motion(clip) if needs_motion else None
+        res4_feat = None
         x = (clip - self.mean) / self.std if self.normalize_input else clip
         for i, block in enumerate(self.blocks[: last + 1]):
             x = block(x)
@@ -65,8 +69,12 @@ class MAX3D(nn.Module):
                 x = self.diff_residual[str(i)](x)
             if i == self.ma_after and self.motion_attn is not None:
                 x = self.motion_attn(x, motion)
+            if i == STAGES["res4"] and self.interaction is not None:
+                res4_feat = x
             if i == STAGES["res5"] and self.eaa is not None:
                 x = self.eaa(x)
+        if self.interaction is not None and last == len(self.blocks) - 1:
+            x = x + self.interaction(res4_feat, motion)  # logit correction
         return x
 
     def forward(self, clip: torch.Tensor) -> torch.Tensor:
