@@ -18,7 +18,7 @@ data:
   train_span: [0.6, 1.0]   # training window = 60-100% of the stored clip (null = thesis sampler)
   rotation_deg: 10
   temporal_inverse: false
-  num_workers: 12
+  num_workers: 8            # 12 exhausted host RAM with 8+ concurrent runs
 
 model:
   num_classes: 2

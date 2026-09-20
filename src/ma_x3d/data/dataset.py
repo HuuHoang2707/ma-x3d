@@ -108,6 +108,6 @@ def make_loader(ds: Dataset, batch_size: int, train: bool, workers: int, seed: i
         num_workers=workers,
         pin_memory=torch.cuda.is_available(),
         persistent_workers=workers > 0,
-        prefetch_factor=4 if workers > 0 else None,
+        prefetch_factor=2 if workers > 0 else None,
         generator=g,
     )
