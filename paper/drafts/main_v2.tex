@@ -4,6 +4,7 @@
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
+\graphicspath{{../figures/}{figures/}{./}}
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{booktabs}
@@ -45,13 +46,15 @@ in the two earliest residual stages. We evaluate them on RWF-2000, Hockey
 Fights and RLVS under a protocol that removes duplicated clips, groups
 clips of the same scene, takes every decision on out-of-fold predictions
 of a grouped four-fold cross-validation, and uses each test split once.
-Under this protocol the modules leave accuracy unchanged on all three
-datasets once results are averaged over three seeds ($-0.04$ points on
-RWF-2000, $p=0.78$; $-0.04$ on Hockey Fights; $-0.19$ on RLVS), including
-when only a quarter of the training clips is used, while the training
-recipe alone is worth 1.6 to 1.9 points. Single-seed runs tell a different
-story: on Hockey Fights one seed shows a significant $+1.25$ points, which
-three seeds remove. Six Kinetics backbones trained under the same
+Under this protocol, and averaged over three seeds, the modules add 0.88
+out-of-fold points when the backbone is fine-tuned conventionally
+($[+0.04, +1.71]$) and nothing once the training recipe is tuned
+($-0.04$ points on RWF-2000, $-0.04$ on Hockey Fights, $-0.19$ on RLVS),
+including when only a quarter of the training clips is used. The recipe
+itself adds 2.80 points to the backbone, and two effects outside the model
+are of the same order as the modules: choosing the epoch on the test split
+adds 0.8 points on average, and one seed made a $+1.25$-point gain on
+Hockey Fights look significant that three seeds remove. Six Kinetics backbones trained under the same
 protocol place X3D-M at 90.9 out-of-fold and 87.4\% test accuracy with
 4.7 GFLOPs, within 3.7 points of an 86M-parameter VideoMAE-B teacher.
 Selecting the epoch on the test split, as is common on these benchmarks,
@@ -118,18 +121,30 @@ predictions, and score each test split once. We also train six
 Kinetics-400 backbones ourselves under this protocol, so that the
 comparison does not rest on numbers obtained under unknown conditions.
 
-The outcome is consistent across the three datasets: averaged over three
-seeds the modules change accuracy by $-0.04$ points on RWF-2000
-($p=0.78$), $-0.04$ on Hockey Fights and $-0.19$ on RLVS, and by $0.00$
-points when only a quarter of the training clips is used. The training
-recipe, in contrast, adds 1.6 points to X3D-M and 1.9 to MA-X3D. Controls
-explain part of the picture: a gate that keeps its parameters but receives
+The outcome depends on how well the backbone is trained. Under
+conventional fine-tuning the modules add 0.88 out-of-fold points on
+RWF-2000 ($[+0.04, +1.71]$, three seeds); under a tuned recipe they add
+$-0.04$ points ($p=0.78$), and the same holds on Hockey Fights
+($-0.04$), on RLVS ($-0.19$) and with a quarter of the training clips
+($0.00$). The recipe itself adds 2.80 points to X3D-M and 1.87 to MA-X3D.
+Controls explain part of the picture: a gate that keeps its parameters but receives
 an all-zero motion map performs as well as the full module, and a dense
 $5\times5$ kernel performs as well as the reparameterised one. Two effects
 that are not part of any model account for more than the modules do:
 selecting the epoch on the test split adds 0.8 points on average, and a
 single lucky seed produced a significant $+1.25$ points on Hockey Fights
 that three seeds remove.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig1_cost}
+  \caption{Test accuracy against computation on RWF-2000, for models we
+  trained ourselves under the protocol of Section~\ref{sec:protocol}
+  (single models, error bars over fold models and seeds). Circles: X3D
+  family; squares: other Kinetics CNNs; triangle and diamonds: MA-X3D and
+  the tuned recipe; star: the VideoMAE-B teacher.}
+  \label{fig:cost}
+\end{figure}
 
 The contributions are:
 \begin{itemize}
@@ -143,9 +158,9 @@ The contributions are:
         measured latency, which gives a comparable accuracy--cost
         reference for lightweight violence detection.
   \item A study of two cheap architectural modules with matched controls,
-        three seeds and three datasets, showing no measurable gain over a
-        properly adapted backbone in any regime we tested, including
-        reduced training data.
+        three seeds and three datasets, showing that their gain under
+        conventional fine-tuning (0.88 points) disappears once the
+        backbone is properly adapted, in every regime we tested.
   \item A measurement of what the evaluation procedure itself is worth:
         0.8 points on average from selecting the epoch on the test split,
         against 1.6--1.9 points for the training recipe.
@@ -515,11 +530,11 @@ the selection alone is worth.
     \midrule
     X3D-XS~\cite{x3d}        & 2.98M  & 0.60  & 83.77 & 79.3 $\pm$ 0.7 & 0.779 \\
     X3D-S~\cite{x3d}         & 2.98M  & 1.96  & 88.88 & 85.0 $\pm$ 0.3 & 0.849 \\
-    X3D-M~\cite{x3d}         & 2.98M  & 4.73  & 89.26 & 86.2 $\pm$ 0.5 & 0.858 \\
+    X3D-M~\cite{x3d}         & 2.98M  & 4.73  & 89.77 & 86.4 $\pm$ 0.6 & 0.861 \\
     S3D~\cite{s3d}           & 7.91M  & 17.98 & 78.77 & 76.9 $\pm$ 0.4 & 0.787 \\
     MC3-18~\cite{r2plus1d}   & 11.49M & 43.34 & 87.43 & 85.5 $\pm$ 0.7 & 0.855 \\
     R(2+1)D-18~\cite{r2plus1d} & 31.30M & 40.52 & 88.69 & 86.7 $\pm$ 0.9 & 0.866 \\
-    MA-X3D (ours)            & 3.01M  & 5.46  & 89.70 & 87.7 $\pm$ 0.9 & 0.874 \\
+    MA-X3D (ours)            & 3.01M  & 5.46  & 89.66 & 87.1 $\pm$ 1.2 & 0.868 \\
     \midrule
     X3D-M, final, 3 seeds    & 2.98M  & 4.73  & 90.90 & 87.4 $\pm$ 0.9 & 0.871 \\
     MA-X3D, final, 3 seeds   & 3.01M  & 5.46  & 90.86 & 87.5 $\pm$ 0.6 & 0.873 \\
@@ -532,29 +547,42 @@ the selection alone is worth.
 \subsection{What the modules contribute}
 \label{sec:modules}
 
-Table~\ref{tab:factorial} crosses the network with the training recipe.
-Under the conventional recipe the modules add 0.44 OOF points
-($[-0.76, +1.58]$, $p = 0.52$); under the final recipe the difference is
-$-0.04$ points ($[-0.72, +0.63]$, $p = 0.78$, three seeds). The recipe, in
-contrast, adds 1.6 points to X3D-M and 1.9 points to MA-X3D. On this
-dataset the two modules therefore do not improve a backbone that is
-already well adapted.
+Table~\ref{tab:factorial} crosses the network with the training recipe,
+three seeds each. Under the conventional recipe the modules add 0.88 OOF
+points, an interval of $[+0.04, +1.71]$ that excludes zero, although the
+McNemar test on a single seed does not reach significance ($p = 0.52$).
+Under the tuned recipe the same modules give $-0.04$ points
+($[-0.72, +0.63]$, $p = 0.78$), and under recipe R1 $-0.11$ points
+($[-0.76, +0.57]$). The recipe itself adds 2.80 points to X3D-M
+($[+1.81, +3.83]$) and 1.87 to MA-X3D ($[+1.09, +2.70]$). The modules
+therefore compensate for a backbone that is not fully adapted, and bring
+nothing once the training does that work.
 
 \begin{table}[t]
   \centering
   \caption{RWF-2000, network $\times$ recipe: OOF accuracy / single-model
-  test accuracy. Three seeds except X3D-M with the conventional recipe.}
+  test accuracy, three seeds each.}
   \label{tab:factorial}
   \setlength{\tabcolsep}{4pt}
   \begin{tabular}{lcc}
     \toprule
     & Conventional recipe & Final recipe \\
     \midrule
-    X3D-M  & 88.00 / 86.1 & 90.90 / 87.4 \\
+    X3D-M  & 88.10 / 85.7 & 90.90 / 87.4 \\
     MA-X3D & 88.99 / 86.6 & 90.86 / 87.5 \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig3_effects}
+  \caption{Differences in out-of-fold accuracy with 95\% bootstrap
+  intervals. Grey: intervals that contain zero. The modules move accuracy
+  by less than the training recipe, and by about as much as choosing the
+  epoch on the test split (bottom, mean and range over six models).}
+  \label{fig:effects}
+\end{figure}
 
 Table~\ref{tab:ablation} separates the two modules and adds the controls.
 Neither module alone changes OOF accuracy significantly, and the control
@@ -663,38 +691,50 @@ observe in their favour besides Hockey Fights.
 
 Table~\ref{tab:recipe} changes the recipe one step at a time for MA-X3D.
 Raising the backbone learning rate from $10^{-5}$ to $5\times10^{-5}$ adds
-1.26 OOF points ($p = 0.040$): with the lower rate, training accuracy
-stayed below validation accuracy and most folds stopped early, so the
-backbone was not adapting enough. Distillation with the conventional
-24-epoch schedule changes nothing. With 48 epochs it adds 1.33 points over
-R1 ($p = 0.015$), but the control that trains for 48 epochs without a
-teacher reaches 90.46, so the part attributable to the teacher is 0.57
-points ($[-0.51, +1.64]$, $p = 0.37$) and is not significant. The useful
+0.67 OOF points ($[-0.02, +1.39]$, three seeds): with the lower rate,
+training accuracy stayed below validation accuracy and most folds stopped
+early, so the backbone was not adapting enough. Distillation with the
+conventional 24-epoch schedule changes nothing. The 48-epoch schedule with
+a teacher adds 1.20 points over R1 ($[+0.53, +1.87]$), but a control that
+trains for 48 epochs without a teacher already reaches 90.46: of that
+gain, 0.76 points come from the longer schedule ($[-0.32, +1.83]$) and
+0.57 from the teacher ($[-0.51, +1.64]$), neither significant on its
+own. The useful
 ingredients are therefore the learning rate and the longer schedule; the
 teacher itself, although 1.6 points better than the student, transfers
 little to a network of this size.
 
 \begin{table}[t]
   \centering
-  \caption{RWF-2000, training recipe for MA-X3D. $p$ against the row named
-  in the text; seed 0 unless stated.}
+  \caption{RWF-2000, training recipe for MA-X3D. Three seeds for R0, R1
+  and R3, one for R1$'$ and R2.}
   \label{tab:recipe}
   \setlength{\tabcolsep}{2.5pt}
   \begin{tabular}{llcc}
     \toprule
     & Recipe & OOF acc & Test acc \\
     \midrule
-    R0  & conventional (lr $10^{-5}$, 24 ep., 3 seeds) & 88.99 & 86.6 $\pm$ 1.0 \\
-    R1  & backbone lr $5\times10^{-5}$                 & 89.70 & 87.7 $\pm$ 0.9 \\
+    R0  & conventional (lr $10^{-5}$, 24 ep.)         & 88.99 & 86.6 $\pm$ 1.0 \\
+    R1  & backbone lr $5\times10^{-5}$                 & 89.66 & 87.1 $\pm$ 1.2 \\
     R1$'$ & R1, 48 epochs, no teacher                  & 90.46 & 87.9 $\pm$ 0.6 \\
     R2  & R1 + distillation, 24 ep.                    & 89.83 & 87.2 $\pm$ 0.8 \\
-    R3  & R1 + distillation, 48 ep. (final, 3 seeds)   & 90.86 & 87.5 $\pm$ 0.6 \\
+    R3  & R1 + distillation, 48 ep. (final)            & 90.86 & 87.5 $\pm$ 0.6 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \subsection{What the protocol is worth}
 \label{sec:selection}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig4_selection}
+  \caption{Test accuracy after every epoch for the four folds of X3D-M
+  with the final recipe, never used for any decision. Circles: the epoch
+  chosen on the validation fold; crosses: the best test epoch, which is
+  what selecting on the test split would report.}
+  \label{fig:selection}
+\end{figure}
 
 Every run logs test accuracy after each epoch, without using it for any
 decision. Choosing the epoch on the test split instead of on the
@@ -720,7 +760,7 @@ view as the deployed configuration.
 
 \subsection{Cost}
 
-The deployed model has 3.01M parameters and 5.46 GFLOPs per view against
+The deployed model has 3.01M parameters and 6.46 GFLOPs per view against
 86.2M and 135 for the teacher, and needs 208\,ms against 400\,ms per clip
 on an AMD EPYC 7413 CPU with 16 threads. On the MI250 GPU the two have
 similar latency (30 and 24\,ms at batch 1, 118 and 136 clips/s at batch 16
@@ -764,12 +804,12 @@ localising the event in time.
 
 We evaluated two cheap additions to a compact 3D CNN for violence
 detection under a protocol that removes duplicated clips, keeps clips of
-the same scene together, and never uses the test split for a decision. Averaged
-over three seeds the additions leave accuracy unchanged on all three
-datasets and in every training regime we tested, while the training recipe
-is worth more than either module, and two effects outside the model, epoch
-selection on the test split and the choice of seed, produce differences
-larger than the modules do. Under
+the same scene together, and never uses the test split for a decision. Averaged over three seeds the additions help a conventionally fine-tuned
+backbone by 0.88 points and leave accuracy unchanged once the recipe is
+tuned, on all three datasets and in every regime we tested, while the
+recipe itself is worth 2.80 points; two effects outside the model, epoch
+selection on the test split and the choice of seed, are of the same order
+as the modules. Under
 the same protocol, a plain X3D-M with 3.0M parameters and 4.7 GFLOPs
 reaches 90.9\% out-of-fold and 87.4\% test accuracy on RWF-2000, within
 3.7 points of an 86M-parameter video transformer, and selecting the epoch
