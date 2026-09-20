@@ -45,12 +45,13 @@ in the two earliest residual stages. We evaluate them on RWF-2000, Hockey
 Fights and RLVS under a protocol that removes duplicated clips, groups
 clips of the same scene, takes every decision on out-of-fold predictions
 of a grouped four-fold cross-validation, and uses each test split once.
-Under this protocol the modules give a significant gain on Hockey Fights
-when the backbone is fine-tuned conventionally (+1.25 out-of-fold points,
-$p=0.006$), no measurable gain on RWF-2000 once the training recipe is
-tuned ($-0.04$ points, $p=0.78$, three seeds), where the recipe itself is
-worth 1.6 to 1.9 points, and no gain on RLVS, where every model we train
-exceeds 98\%. Six Kinetics backbones trained under the same
+Under this protocol the modules leave accuracy unchanged on all three
+datasets once results are averaged over three seeds ($-0.04$ points on
+RWF-2000, $p=0.78$; $-0.04$ on Hockey Fights; $-0.19$ on RLVS), including
+when only a quarter of the training clips is used, while the training
+recipe alone is worth 1.6 to 1.9 points. Single-seed runs tell a different
+story: on Hockey Fights one seed shows a significant $+1.25$ points, which
+three seeds remove. Six Kinetics backbones trained under the same
 protocol place X3D-M at 90.9 out-of-fold and 87.4\% test accuracy with
 4.7 GFLOPs, within 3.7 points of an 86M-parameter VideoMAE-B teacher.
 Selecting the epoch on the test split, as is common on these benchmarks,
@@ -117,17 +118,18 @@ predictions, and score each test split once. We also train six
 Kinetics-400 backbones ourselves under this protocol, so that the
 comparison does not rest on numbers obtained under unknown conditions.
 
-The outcome is mixed, and the way it splits is the contribution of this
-paper. On Hockey Fights, where the backbone is fine-tuned conventionally,
-the two modules add 1.25 out-of-fold points ($p=0.006$). On RWF-2000 they
-add 0.44 points under the same conventional recipe and nothing once the
-recipe is tuned ($-0.04$ points, $p=0.78$, three seeds), while the recipe
-alone adds 1.6 points to X3D-M and 1.9 to MA-X3D. A control in which the
-gate keeps its parameters but receives an all-zero motion map matches the
-full module, so on RWF-2000 the gate does not owe its behaviour to the
-motion cue. Finally, selecting the epoch on the test split would add 0.8
-points on average, more than most of the architectural gains reported on
-this benchmark.
+The outcome is consistent across the three datasets: averaged over three
+seeds the modules change accuracy by $-0.04$ points on RWF-2000
+($p=0.78$), $-0.04$ on Hockey Fights and $-0.19$ on RLVS, and by $0.00$
+points when only a quarter of the training clips is used. The training
+recipe, in contrast, adds 1.6 points to X3D-M and 1.9 to MA-X3D. Controls
+explain part of the picture: a gate that keeps its parameters but receives
+an all-zero motion map performs as well as the full module, and a dense
+$5\times5$ kernel performs as well as the reparameterised one. Two effects
+that are not part of any model account for more than the modules do:
+selecting the epoch on the test split adds 0.8 points on average, and a
+single lucky seed produced a significant $+1.25$ points on Hockey Fights
+that three seeds remove.
 
 The contributions are:
 \begin{itemize}
@@ -141,8 +143,9 @@ The contributions are:
         measured latency, which gives a comparable accuracy--cost
         reference for lightweight violence detection.
   \item A study of two cheap architectural modules with matched controls,
-        showing a significant gain on one dataset under a conventional
-        recipe and none on RWF-2000 once the backbone is properly adapted.
+        three seeds and three datasets, showing no measurable gain over a
+        properly adapted backbone in any regime we tested, including
+        reduced training data.
   \item A measurement of what the evaluation procedure itself is worth:
         0.8 points on average from selecting the epoch on the test split,
         against 1.6--1.9 points for the training recipe.
@@ -593,16 +596,21 @@ kernels, however the wider support is parameterised.
   \end{tabular}
 \end{table}
 
-The picture is different on Hockey Fights. Under recipe R1 the modules
-take X3D-M from 94.73 to 95.98 OOF accuracy, that is $+1.25$ points
-($[+0.50, +2.13]$, $p = 0.006$) and $+0.8$ points on the test split; under
-the final recipe both reach about 96.4 and the gain falls to 0.50 points
-($p = 0.34$). Taken together with RWF-2000, the modules help
+Hockey Fights shows how easily a single run misleads. With one seed the
+modules appear to add $1.25$ OOF points there ($p = 0.006$), but the
+baseline run of that seed was a weak one: over three seeds X3D-M reaches
+$95.86 \pm 0.80$ and MA-X3D $95.82 \pm 0.16$, a difference of $-0.04$
+points ($[-0.42, +0.29]$). Under the final recipe both reach about 96.4.
+We report the single-seed number because it is the kind of result that
+enters the literature unchallenged. Taken together with RWF-2000, the modules help
 when the backbone is not fully adapted to the data and stop helping when
-the training recipe closes that gap. A further observation supports this
-reading: on RWF-2000 the only group of clips where MA-X3D is ahead of
-X3D-M is the quartile with the strongest motion ($+1.26$ points), while the
-three quieter quartiles show no difference.
+the training recipe closes that gap. Two further regimes give the modules their best chance and show nothing.
+Training on a quarter or a half of the clips of each fold, where an
+identity-initialised prior should help most, leaves the difference at
+$0.00$ points ($p = 1.0$) and $-0.25$ points ($p = 0.69$). On RWF-2000 the
+only group of clips where MA-X3D is ahead is the quartile with the
+strongest motion ($+1.26$ points), while the three quieter quartiles show
+no difference.
 
 RLVS adds no evidence either way: every model, from X3D-M under recipe R1
 to the 86M-parameter teacher, lies between 98.4\% and 98.7\% test accuracy
@@ -756,10 +764,12 @@ localising the event in time.
 
 We evaluated two cheap additions to a compact 3D CNN for violence
 detection under a protocol that removes duplicated clips, keeps clips of
-the same scene together, and never uses the test split for a decision. The
-additions help where the backbone is under-adapted, significantly so on
-Hockey Fights, and give no measurable gain on RWF-2000 once the training
-recipe is tuned, where the recipe is worth more than either module. Under
+the same scene together, and never uses the test split for a decision. Averaged
+over three seeds the additions leave accuracy unchanged on all three
+datasets and in every training regime we tested, while the training recipe
+is worth more than either module, and two effects outside the model, epoch
+selection on the test split and the choice of seed, produce differences
+larger than the modules do. Under
 the same protocol, a plain X3D-M with 3.0M parameters and 4.7 GFLOPs
 reaches 90.9\% out-of-fold and 87.4\% test accuracy on RWF-2000, within
 3.7 points of an 86M-parameter video transformer, and selecting the epoch
