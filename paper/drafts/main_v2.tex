@@ -213,58 +213,28 @@ student, and train one teacher per cross-validation fold so that no
 validation clip is seen by either model.
 
 %======================================================================
-\section{Method}
+\section{Model and Training}
 \label{sec:method}
 
-\subsection{Problem formulation and overview}
+\subsection{Backbone and modules}
 
-Given a trimmed clip $X \in [0,1]^{3 \times T \times H \times W}$ of RGB
-frames, with $T=16$ and $H=W=224$, the task is to predict whether it
-contains violence, $y \in \{0,1\}$. The model $f_\theta$ returns two logits,
-and the clip is labelled violent when the softmax probability of that class
-is at least 0.5.
+A clip is an RGB tensor $X \in [0,1]^{3 \times T \times H \times W}$ with
+$T=16$ and $H=W=224$, and the model returns two logits. The backbone is
+X3D-M~\cite{x3d}: a stem ($1\times3\times3$ convolution with spatial stride
+2, then a $5\times1\times1$ channel-wise temporal convolution) and four
+stages of bottleneck blocks, each with a $1\times1\times1$ expansion to
+2.25 times the stage width, a $3\times3\times3$ channel-wise convolution,
+squeeze-and-excitation~\cite{se} and Swish, and a $1\times1\times1$
+projection. For our input the stages output $16\times56^2$ (Res2, 24
+channels, 3 blocks), $16\times28^2$ (Res3, 48, 5), $16\times14^2$ (Res4,
+96, 11) and $16\times7^2$ (Res5, 192, 7); the head projects to 432
+channels, pools globally, maps to 2048 features and ends in a new two-way
+linear layer. The weights are pre-trained on Kinetics-400~\cite{kinetics}.
 
-MA-X3D keeps the X3D-M backbone~\cite{x3d} unchanged and adds two modules
-(Fig.~\ref{fig:pipeline}, Table~\ref{tab:arch}). The stem applies a
-$1\times3\times3$ convolution with spatial stride 2 and a $5\times1\times1$
-channel-wise temporal convolution. Four residual stages follow; each block
-is a bottleneck made of a $1\times1\times1$ expansion to 2.25 times the
-stage width, a $3\times3\times3$ channel-wise convolution (with spatial
-stride 2 in the first block of a stage), squeeze-and-excitation~\cite{se}
-and Swish, and a $1\times1\times1$ projection. The temporal resolution stays
-at 16 throughout. The head projects to 432 channels, pools globally, maps
-to 2048 features, and ends in a new two-way linear layer. The backbone is
-pre-trained on Kinetics-400~\cite{kinetics}.
-
-The design follows four principles. \textbf{P1 Lightweight}: no second
-stream and no change to the backbone topology; the two modules add 36.2K
-parameters (1.2\%) at inference. \textbf{P2 Identity initialisation}: at
-the start of training the network computes the same function as the
-pre-trained backbone, so the new parameters are learned as departures from
-it. \textbf{P3 No inference overhead beyond the widened kernels}:
-training-time structure is fused away. \textbf{P4 Training-only teacher}:
-the distillation teacher is not part of the deployed model.
-
-\begin{table}[t]
-  \centering
-  \caption{MA-X3D for a $16\times224\times224$ clip. Width: output channels
-  (inner width of the bottleneck in brackets).}
-  \label{tab:arch}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lcccl}
-    \toprule
-    Stage & Output $T{\times}H{\times}W$ & Width & Blocks & Change \\
-    \midrule
-    Input & $16\times224\times224$ & 3   & -- & motion map $m$ \\
-    Stem  & $16\times112\times112$ & 24  & -- & -- \\
-    Res2  & $16\times56\times56$   & 24 (54)  & 3  & $5\times5$ kernels \\
-    Res3  & $16\times28\times28$   & 48 (108) & 5  & $5\times5$ kernels \\
-    Res4  & $16\times14\times14$   & 96 (216) & 11 & Motion Attention \\
-    Res5  & $16\times7\times7$     & 192 (432) & 7 & -- \\
-    Head  & $1\times1\times1$      & 2   & -- & new classifier \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+MA-X3D adds two modules (Fig.~\ref{fig:pipeline}), both initialised as the
+identity so that training starts from the pre-trained function, and both
+free of training-time structure at inference. They add 36.2K parameters
+(1.2\%) and 0.73 GFLOPs (15\%).
 
 \begin{figure}[t]
   \centering
@@ -272,222 +242,141 @@ the distillation teacher is not part of the deployed model.
   \caption{MA-X3D. The motion map is computed from the input frames and
   gates the Res4 features; Res2 and Res3 use $5\times5$ channel-wise
   kernels. During training (dashed) a VideoMAE-B teacher receives the same
-  augmented clip and provides soft targets; it is not used at inference.}
+  augmented clip and provides soft targets.}
   \label{fig:pipeline}
 \end{figure}
-
-\subsection{Input pipeline}
-
-\textbf{Person-centred crop.} Offline, YOLOv8n~\cite{yolov8} detects people
-on 12 of 64 frames per clip, the box centres are clustered with
-DBSCAN~\cite{dbscan} (radius $0.15\max(H,W)$), and the box of the largest
-cluster, enlarged by 20\%, is applied to every frame; the full frame is
-kept when no person is found. Clustering rather than taking the union keeps
-bystanders from widening the crop, and a static box keeps the background
-registered under a fixed camera, so the frame difference reflects the
-movement of people. Frames are denoised with a bilateral
-filter~\cite{bilateral}, contrast-enhanced with CLAHE~\cite{clahe} and
-resized to $224\times224$; 64 frames are stored per clip.
-
-\textbf{Temporal sampling.} At test time the 16 frames are spread evenly
-over the 64 stored frames. During training they are spread over a random
-window covering 60--100\% of the clip, with a jitter of one frame, so that
-training and testing see motion at the same time scale.
-
-\textbf{Augmentation.} Every random parameter is drawn once per clip and
-applied to all its frames, so that the frames stay registered and the
-motion map contains only real motion: brightness ($\times0.5$--$1.5$),
-saturation ($\pm30\%$) and value shifts, horizontal flip, random crop
-(70--100\% of the side, $p=0.8$), rotation ($\pm10^\circ$, $p=0.8$), a
-change of playback speed ($\times0.7$--$1.3$, $p=0.5$) and Gaussian blur
-($p=0.2$). CutMix~\cite{cutmix} is applied to half of the batches with a
-box that is the same in all frames of a clip.
 
 \subsection{Motion Attention}
 \label{sec:ma}
 
-\textbf{Motion map.} Let $x_{c,t}$ denote channel $c$ of frame $t$ of the
-input clip in $[0,1]$. The channel-averaged absolute difference at step
-$s$ is
+With $x_{c,t}$ the input frames in $[0,1]$, the channel-averaged absolute
+difference at step $s$ is
 \begin{equation}
   d^{(s)}_t = \frac{1}{3} \sum_{c=1}^{3} \left| x_{c,t} - x_{c,t-s} \right|,
   \qquad s \in \{1, 2\},
   \label{eq:diff}
 \end{equation}
-with $d^{(s)}_t = d^{(s)}_s$ for $t < s$, so that the map keeps all $T$
-frames. The motion map combines the two steps and saturates at $\delta$:
+with $d^{(s)}_t = d^{(s)}_s$ for $t < s$, and the motion map is
 \begin{equation}
   m_t = \frac{1}{\delta}\min\!\left( \max\!\left(d^{(1)}_t,\, d^{(2)}_t\right),\; \delta \right),
   \qquad \delta = 0.2 .
   \label{eq:motion}
 \end{equation}
-The two steps respond to fast and slower movement, their maximum keeps the
+The two steps respond to fast and slower movement, the maximum keeps the
 map single-channel, and the saturation limits flicker and compression
-artefacts. The map is computed before Kinetics normalisation.
-
-\textbf{Temporal modes.} A temporal convolution $w \in \mathbb{R}^{N \times
-1 \times 3 \times 1 \times 1}$ maps $m$ to $N=4$ channels, $M = w * m$.
-Because its spatial extent is one, each output channel is a temporal filter
-of the motion signal and can represent, for instance, its onset or its
-persistence. The first filter is initialised as the impulse $(0,1,0)$,
-which reproduces $m$, and the others from $\mathcal{N}(0, 0.05^2)$.
-
-\textbf{Gate.} The modes are resampled to the Res4 resolution by trilinear
-interpolation, $\tilde{M} = \mathcal{R}(M) \in \mathbb{R}^{4 \times 16
-\times 14 \times 14}$, and mapped to one gain per channel and position:
+artefacts; the map is computed before Kinetics normalisation. A temporal
+convolution $w \in \mathbb{R}^{4 \times 1 \times 3 \times 1 \times 1}$
+turns it into four temporal modes, $M = w * m$, the first initialised as
+the impulse $(0,1,0)$ and the others from $\mathcal{N}(0, 0.05^2)$. The
+modes are resampled to the Res4 resolution ($\tilde{M} = \mathcal{R}(M)$)
+and mapped to one gain per channel and position,
 \begin{equation}
   G = \tanh\!\left( W_2\, \mathrm{ReLU}\!\left(W_1 \tilde{M}\right) + b_2 \right),
+  \quad Y = F \odot (1 + G),
   \label{eq:gate}
 \end{equation}
-where $W_1 \in \mathbb{R}^{24 \times 4}$ and $W_2 \in \mathbb{R}^{96 \times
-24}$ act as $1\times1\times1$ convolutions. The Res4 output $F \in
-\mathbb{R}^{96 \times 16 \times 14 \times 14}$ is modulated as
-\begin{equation}
-  Y = F \odot (1 + G) .
-  \label{eq:modulate}
-\end{equation}
-
-$W_2$ starts from $\mathcal{N}(0, 0.01^2)$ with $b_2 = 0$, so $G \approx 0$
-and the module is an identity at initialisation (P2), and $1 + G \in (0,2)$
-bounds the modulation: the cue re-weights features the backbone has
-computed instead of adding new ones. The gain varies over channels, time
-and position, unlike squeeze-and-excitation~\cite{se}, which varies over
-channels only. The gate is applied after Res4, whose $14\times14$ features
-are semantic but still resolve where movement occurs, and has 2{,}508
-parameters.
-
-\begin{figure}[t]
-  \centering
-  % \includegraphics[width=\linewidth]{fig/ma.pdf}
-  \caption{Motion Attention. The multi-scale motion map is filtered into
-  four temporal modes, resampled to the Res4 resolution, and turned into a
-  gain $1+G \in (0,2)$ that multiplies the Res4 features.}
-  \label{fig:ma}
-\end{figure}
+with $W_1 \in \mathbb{R}^{24 \times 4}$ and $W_2 \in \mathbb{R}^{96 \times
+24}$ acting as $1\times1\times1$ convolutions and $F$ the Res4 output.
+Since $W_2$ starts from $\mathcal{N}(0, 0.01^2)$ with $b_2 = 0$, the module
+is an identity at initialisation, and $1+G \in (0,2)$ bounds the
+modulation, so the cue re-weights features instead of adding new ones. The
+gain varies over channels, time and position, unlike
+squeeze-and-excitation~\cite{se}, which varies over channels only. Res4 is
+chosen because its $14\times14$ features are semantic and still resolve
+where movement occurs. The module has 2{,}508 parameters.
 
 \subsection{Wide-kernel reparameterisation}
 \label{sec:wk}
 
-\textbf{Formulation.} Let $W_{\text{base}} \in \mathbb{R}^{C \times 1
-\times 3 \times 3 \times 3}$ be the pre-trained channel-wise kernel of a
-block in Res2 ($C=54$) or Res3 ($C=108$), with temporal, vertical and
-horizontal extent 3. We replace it by
+Let $W_{\text{base}} \in \mathbb{R}^{C \times 1 \times 3 \times 3 \times
+3}$ be the channel-wise kernel of a block in Res2 ($C=54$) or Res3
+($C=108$). It is replaced by
 \begin{equation}
   W_{\text{eff}} = \mathcal{P}(W_{\text{base}}) + M_{\text{ring}} \odot \Delta ,
   \label{eq:rep}
 \end{equation}
-where $\mathcal{P}$ pads the two spatial dimensions with zeros to
-$5\times5$, $\Delta \in \mathbb{R}^{C \times 1 \times 3 \times 5 \times 5}$
-is initialised to zero, and $M_{\text{ring}}$ is a fixed binary mask equal
-to one on the 16 outer positions of each $5\times5$ slice and zero on the
-central $3\times3$. The spatial padding of the convolution grows by one, so
-the output size is unchanged. At initialisation $W_{\text{eff}}$ equals the
-pre-trained kernel (P2), and throughout training the mask keeps the centre
-and the ring as disjoint sets of weights.
-
-\textbf{Exact fusion.} Convolution is linear in its kernel,
-$W_{\text{eff}} * X = \mathcal{P}(W_{\text{base}}) * X + (M_{\text{ring}}
-\odot \Delta) * X$. After training, $W_{\text{eff}}$ is evaluated once and
-stored as an ordinary $3\times5\times5$ channel-wise kernel, so inference
-runs a single convolution per block (P3). In our runs the fused and the
-unfused networks differ by less than $4\times10^{-7}$ in output
-probability.
-
-\textbf{Why a separate tensor.} Inflating the kernel to a single dense
-$5\times5$ tensor with a zero ring puts the ring in a pre-trained layer, at
-the backbone learning rate. Because Adam-type optimisers~\cite{adamw}
-normalise the gradient by a running estimate of its magnitude, the step
-size follows the learning rate, and the ring then moves no further than the
-weights around it. Keeping $\Delta$ separate places it in the group of new
-parameters, at ten times that rate.
-
-\textbf{Receptive field and cost.} A $k\times k$ spatial kernel widens the
-receptive field by $k-1$ pixels of its feature map, so the change from
-$3\times3$ to $5\times5$ doubles the contribution of each block. Over a
-stage of $L$ blocks the widening grows from $2L$ to $4L$ pixels, from 6 to
-12 in Res2 ($L=3$) and from 10 to 20 in Res3 ($L=5$). The modification
-covers all eight blocks of the two stages and adds $48 \times (3 \cdot 54 +
-5 \cdot 108) = 33{,}696$ parameters after fusion and 0.715 GFLOPs; with the
-2{,}508 parameters and 0.017 GFLOPs of Motion Attention, the two modules
-take X3D-M from 2.98M parameters and 4.73 GFLOPs to 3.01M and 5.46.
-Widening Res4 and Res5 would cost more parameters, as their channels are
-wider, while their receptive fields are already large relative to their
-$14\times14$ and $7\times7$ maps.
+where $\mathcal{P}$ zero-pads the spatial dimensions to $5\times5$,
+$\Delta$ is initialised to zero and $M_{\text{ring}}$ is one on the 16
+outer positions of each $5\times5$ slice. Convolution is linear in its
+kernel, so after training the two terms are summed into a single
+$3\times5\times5$ kernel and inference runs one convolution per block; in
+our runs the fused and unfused networks differ by less than
+$4\times10^{-7}$ in output probability. Keeping $\Delta$ as a separate
+tensor puts it in the group of new parameters, at ten times the backbone
+learning rate: Adam-type optimisers~\cite{adamw} normalise the gradient by
+a running estimate of its magnitude, so the step size follows the learning
+rate, and a ring inside a pre-trained tensor would move no further than the
+weights around it. Section~\ref{sec:modules} tests both choices. The
+widening covers the eight blocks of Res2 and Res3, adds 33{,}696
+parameters, and doubles the per-block contribution to the receptive field
+of those stages.
 
 \begin{figure}[t]
   \centering
-  % \includegraphics[width=\linewidth]{fig/wk.pdf}
-  \caption{Wide-kernel reparameterisation. The pre-trained $3\times3$
-  centre is padded to $5\times5$ and a zero-initialised ring $\Delta$,
-  restricted by a fixed mask, is added and trained at the learning rate of
-  the new parameters. After training the two are summed into one kernel.}
-  \label{fig:wk}
+  % \includegraphics[width=\linewidth]{fig/ma_wk.pdf}
+  \caption{Left: Motion Attention, from the multi-scale motion map to a
+  bounded gain on the Res4 features. Right: the wide kernel, a
+  zero-initialised ring added to the padded $3\times3$ centre and fused
+  into one kernel after training.}
+  \label{fig:modules}
 \end{figure}
+
+\subsection{Input pipeline}
+
+Offline, YOLOv8n~\cite{yolov8} detects people on 12 of 64 frames per clip,
+the box centres are clustered with DBSCAN~\cite{dbscan} (radius
+$0.15\max(H,W)$), and the box of the largest cluster, enlarged by 20\%, is
+applied to every frame; the full frame is kept when no person is found. A
+static box keeps the background registered under a fixed camera, so the
+frame difference reflects the movement of people. Frames are denoised with
+a bilateral filter~\cite{bilateral}, contrast-enhanced with
+CLAHE~\cite{clahe} and resized to $224\times224$; 64 frames are stored per
+clip. At test time the 16 frames are spread evenly over the stored clip,
+during training over a random window covering 60--100\% of it, so both see
+the same time scale. Augmentation draws one set of parameters per clip and
+applies it to every frame, which keeps the frames registered: brightness
+($\times0.5$--$1.5$), saturation ($\pm30\%$) and value shifts, horizontal
+flip, random crop (70--100\% of the side, $p=0.8$), rotation
+($\pm10^\circ$, $p=0.8$), playback speed ($\times0.7$--$1.3$, $p=0.5$) and
+Gaussian blur ($p=0.2$); CutMix~\cite{cutmix} is applied to half of the
+batches with one box for all frames of a clip.
 
 \subsection{Training}
 \label{sec:training}
 
-\textbf{Schedule and parameter groups.} Training has two phases. In the probe phase (four epochs at
-$10^{-3}$) the backbone is frozen and
-only the new classifier and Motion Attention are trained, so that the new
-components adapt to the pre-trained features before any pre-trained weight
-changes. In the fine-tuning phase Res2, Res3, Res5 and the head are
-trained at the backbone rate, and the new parameters, including the rings
-$\Delta$, at a rate ten times higher. The stem and Res4 stay frozen, and so
-do the BatchNorm statistics of all frozen layers. The optimiser is rebuilt
-at the phase change so that the moment estimates start afresh.
+Training has two phases. In the probe phase (four epochs at $10^{-3}$) the
+backbone is frozen and only the new classifier and Motion Attention are
+trained, so that the new components adapt before any pre-trained weight
+moves. In the fine-tuning phase Res2, Res3, Res5 and the head are trained
+at $5\times10^{-5}$ and the new parameters, including the rings $\Delta$,
+at $5\times10^{-4}$; the stem and Res4 stay frozen, as do the BatchNorm
+statistics of frozen layers, and the optimiser is rebuilt at the phase
+change. We use AdamW~\cite{adamw} (weight decay $5\times10^{-4}$), a cosine
+schedule, gradient clipping at 1.0, bf16 arithmetic, batches of 12 clips,
+two augmented views of every clip per epoch, and an exponential moving
+average of the weights (decay 0.999) that is used for validation and as the
+final model. The checkpoint with the best validation F1 is kept and
+training stops after 16 epochs without improvement. Section~\ref{sec:results}
+refers to this schedule with 24 epochs and no teacher as R1, and to the
+48-epoch schedule with distillation as the final recipe; R0 is the
+conventional variant with a backbone learning rate of $10^{-5}$.
 
-\textbf{Objective.} For a CutMix batch, a clip $X_a$ receives a box from a
-clip $X_b$ covering a fraction $1-\lambda$ of the frame, giving $\tilde{X}$
-with targets $y_a$ and $y_b$. With student logits $s = f_\theta(\tilde{X})$
-the supervised loss is
+For a CutMix batch with mixing weight $\lambda$, student logits
+$s$ and teacher logits $t$ on the same input, the loss is
 \begin{equation}
-  \mathcal{L}_{\text{CE}} = \lambda\, \ell(y_a, s) + (1-\lambda)\, \ell(y_b, s),
-  \label{eq:ce}
-\end{equation}
-where $\ell$ is the cross-entropy with label smoothing~\cite{labelsmoothing}
-$\varepsilon = 0.1$ ($\lambda = 1$ without CutMix). With teacher logits
-$t = f_{\text{T}}(\tilde{X})$ on the same input, the training loss is
-\begin{equation}
-  \mathcal{L} = (1-\alpha)\, \mathcal{L}_{\text{CE}}
-  + \alpha\, \tau^2\, \mathrm{KL}\!\left(\sigma(t/\tau) \,\middle\|\, \sigma(s/\tau)\right),
+  \mathcal{L} = (1-\alpha)\left[\lambda \ell(y_a, s) + (1-\lambda) \ell(y_b, s)\right]
+  + \alpha \tau^2 \mathrm{KL}\!\left(\sigma(t/\tau) \,\|\, \sigma(s/\tau)\right),
   \label{eq:kd}
 \end{equation}
-with $\sigma$ the softmax, $\alpha = 0.5$ and $\tau = 2$; the factor
-$\tau^2$ keeps the gradient scale of the second term independent of
-$\tau$~\cite{hinton2015}.
-
-\textbf{Teacher.} The teacher is VideoMAE-B~\cite{videomae}, a ViT-B with
-86M parameters that takes $16\times224\times224$ clips, pre-trained by
-masked autoencoding and fine-tuned on Kinetics-400. For each fold of the
-protocol (Section~\ref{sec:protocol}) it is fine-tuned on the training clips
-of that fold only: one epoch with the backbone frozen, then all layers at
-$3\times10^{-5}$ (classifier $10^{-3}$, weight decay 0.05) for at most 15
-epochs, with the same augmentation and checkpoint selection as the student.
-It never sees the validation or test clips of the fold. During student
-training it runs in inference mode on exactly the clip $\tilde{X}$ that the
-student receives, so that its soft target describes the student's input,
-including the CutMix box; following Beyer et
-al.~\cite{beyer2022}, the student is trained for longer than without
-distillation (48 instead of 24 epochs).
-
-\textbf{Optimisation.} AdamW~\cite{adamw} with weight decay $5\times10^{-4}$
-and $\beta = (0.9, 0.999)$, a cosine decay within each phase after one
-warm-up epoch, gradient clipping at norm 1.0, bf16 arithmetic and batches of
-12 clips. Every training clip appears twice per epoch with independent
-augmentation. An exponential moving average of the weights (decay 0.999) is
-used for validation and as the final model. The checkpoint with the best
-validation F1 is kept, and training stops after 16 epochs without
-improvement.
-
-\subsection{Inference}
-
-The rings are fused into their kernels and the teacher is discarded. A clip
-is classified from one view, the 16 evenly spaced frames. Optionally, $K=4$
-views are formed by shifting all frame positions by $k/K$ of the sampling
-stride, $k = 0, \dots, K-1$, and their probabilities are averaged. The
-threshold is 0.5; Section~\ref{sec:options} shows that tuning it on the
-out-of-fold predictions brings no gain.
+with $\ell$ the cross-entropy with label smoothing~\cite{labelsmoothing}
+$0.1$, $\sigma$ the softmax, $\alpha = 0.5$ and $\tau = 2$. The teacher is
+VideoMAE-B~\cite{videomae} (86M parameters, Kinetics-400), fine-tuned for
+at most 15 epochs on the training clips of the same fold and run in
+inference mode on exactly the clip the student receives, following Beyer et
+al.~\cite{beyer2022}; it never sees the validation or test clips of the
+fold. At inference the rings are fused, the teacher is discarded, and a
+clip is classified from the 16 evenly spaced frames with a threshold of
+0.5.
 
 %======================================================================
 \section{Evaluation Protocol}
@@ -495,7 +384,7 @@ out-of-fold predictions brings no gain.
 
 \subsection{Datasets}
 
-We use three public benchmarks (Table~\ref{tab:data}).
+We use three public benchmarks.
 RWF-2000~\cite{rwf2000} contains 2{,}000 five-second clips of real fights
 and non-violent activity, most of them from surveillance cameras, with an
 official split of 1{,}600 training and 400 test clips. Hockey
@@ -519,26 +408,11 @@ Fights and RLVS we remove 3 and 15 copies. For these two datasets we draw a
 test set of 20\% by whole same-scene groups, with both classes balanced,
 so that no scene appears on both sides. The copy of RLVS that we obtained
 stores each of its 2{,}000 videos twice, in folders named \emph{train} and
-\emph{test}; we use one copy. Same-scene pairs that remain in a training
-split are kept in the same cross-validation fold.
+\emph{test}; we use one copy. Same-scene pairs that remain in a training split are kept in the same
+cross-validation fold. After the audit, RWF-2000 has 1{,}583 training and
+400 test clips in 1{,}572 groups, Hockey Fights 797 and 200 in 792 groups,
+and RLVS 1{,}588 and 397 in 1{,}581 groups.
 
-\begin{table}[t]
-  \centering
-  \caption{Datasets after the duplicate audit. Groups: same-scene groups
-  in the training split (a group never spans two folds). Frames: typical
-  length of the original clips (median for RLVS).}
-  \label{tab:data}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lcccccc}
-    \toprule
-    Dataset & Clips & Copies removed & Train & Test & Groups & Frames \\
-    \midrule
-    RWF-2000      & 2{,}000 & 17 & 1{,}583 & 400 & 1{,}572 & 150 \\
-    Hockey Fights & 1{,}000 & 3  & 797     & 200 & 792     & 41 \\
-    RLVS          & 2{,}000 & 15 & 1{,}588 & 397 & 1{,}581 & 125 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
 
 \subsection{Cross-validation and decisions}
 
@@ -719,55 +593,60 @@ kernels, however the wider support is parameterised.
   \end{tabular}
 \end{table}
 
-The picture is different on Hockey Fights (Table~\ref{tab:hockey}). Under
-recipe R1 the modules add 1.25 OOF points ($[+0.50, +2.13]$, $p = 0.006$)
-and 0.8 points of test accuracy; under the final recipe the gain falls to
-0.50 points ($p = 0.34$). Taken together with RWF-2000, the modules help
+The picture is different on Hockey Fights. Under recipe R1 the modules
+take X3D-M from 94.73 to 95.98 OOF accuracy, that is $+1.25$ points
+($[+0.50, +2.13]$, $p = 0.006$) and $+0.8$ points on the test split; under
+the final recipe both reach about 96.4 and the gain falls to 0.50 points
+($p = 0.34$). Taken together with RWF-2000, the modules help
 when the backbone is not fully adapted to the data and stop helping when
 the training recipe closes that gap. A further observation supports this
 reading: on RWF-2000 the only group of clips where MA-X3D is ahead of
 X3D-M is the quartile with the strongest motion ($+1.26$ points), while the
 three quieter quartiles show no difference.
 
-RLVS (Table~\ref{tab:rlvs}) adds no evidence either way. Every model,
-from X3D-M under recipe R1 to the 86M-parameter teacher, lies between
-98.4\% and 98.7\% test accuracy, and the modules change out-of-fold
-accuracy by $0.00$ points under R1 ($p = 1.0$) and $-0.19$ under the final
-recipe ($p = 0.38$). With 397 test clips, one point is four clips, so the
-benchmark is saturated for models of this class and cannot rank them.
+RLVS adds no evidence either way: every model, from X3D-M under recipe R1
+to the 86M-parameter teacher, lies between 98.4\% and 98.7\% test accuracy
+(98.6, 97.9, 98.5, 98.2 and 98.4 for X3D-M and MA-X3D under R1, both
+under the final recipe, and the teacher), and the modules change
+out-of-fold accuracy by $0.00$ points under R1 ($p = 1.0$) and $-0.19$
+under the final recipe ($p = 0.38$). The benchmark is saturated for models
+of this class.
+
+
+\subsection{Transfer between datasets}
+\label{sec:cross}
+
+Table~\ref{tab:cross} applies every model to the test splits of the other
+two datasets without any adaptation. In-domain accuracy says little about
+what happens then: a detector trained on Hockey Fights, where it reaches
+96\%, falls to 64--65\% on RWF-2000, and one trained on RLVS, where it
+reaches 98\%, falls to 59\% on Hockey Fights. The three benchmarks measure
+different things, which is a reason to be careful with results reported on
+a single one of them. The teacher transfers better than the compact models
+when it is trained on the smallest dataset (74.6 against 63.6 from Hockey
+to RWF-2000), and the modules give a small advantage in five of the six
+transfer directions (mean $+0.65$ points), the one consistent signal we
+observe in their favour besides Hockey Fights.
 
 \begin{table}[t]
   \centering
-  \caption{Hockey Fights (797 training / 200 test clips, one seed).}
-  \label{tab:hockey}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lccc}
+  \caption{Transfer: test accuracy of single models trained on the row
+  dataset and applied to the column dataset without adaptation (final
+  recipe, mean over fold models). In-domain results in brackets.}
+  \label{tab:cross}
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{llccc}
     \toprule
-    Model & OOF acc & Test acc & Test F1 \\
+    Trained on & Model & RWF-2000 & Hockey & RLVS \\
     \midrule
-    X3D-M, R1      & 94.73 & 94.9 $\pm$ 1.0 & 0.947 \\
-    MA-X3D, R1     & 95.98 & 95.7 $\pm$ 0.8 & 0.956 \\
-    X3D-M, final   & 96.11 & 96.1 $\pm$ 1.2 & 0.960 \\
-    MA-X3D, final  & 96.61 & 95.6 $\pm$ 0.2 & 0.955 \\
-    VideoMAE-B     & 97.37 & 94.9 $\pm$ 0.2 & 0.946 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-\begin{table}[t]
-  \centering
-  \caption{RLVS (1{,}588 training / 397 test clips, one seed). Every model
-  is above 98\%, so the benchmark does not separate them.}
-  \label{tab:rlvs}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lccc}
-    \toprule
-    Model & OOF acc & Test acc & Test F1 \\
-    \midrule
-    X3D-M, R1      & 98.49 & 98.6 $\pm$ 0.3 & 0.986 \\
-    MA-X3D, R1     & 98.49 & 97.9 $\pm$ 0.2 & 0.979 \\
-    X3D-M, final   & 98.68 & 98.5 $\pm$ 0.5 & 0.985 \\
-    MA-X3D, final  & 98.49 & 98.2 $\pm$ 0.2 & 0.982 \\
-    VideoMAE-B     & 98.99 & 98.4 $\pm$ 0.2 & 0.984 \\
+    RWF-2000 & X3D-M      & (87.4) & 74.9 & 88.0 \\
+             & MA-X3D     & (87.6) & 76.0 & 88.3 \\
+             & VideoMAE-B & (91.2) & 67.2 & 90.7 \\
+    Hockey   & X3D-M      & 63.6 & (96.1) & 67.8 \\
+             & MA-X3D     & 65.4 & (95.6) & 65.9 \\
+             & VideoMAE-B & 74.6 & (94.9) & 76.1 \\
+    RLVS     & X3D-M      & 79.7 & 58.5 & (98.5) \\
+             & MA-X3D     & 81.2 & 59.6 & (98.2) \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -802,12 +681,6 @@ little to a network of this size.
     R1$'$ & R1, 48 epochs, no teacher                  & 90.46 & 87.9 $\pm$ 0.6 \\
     R2  & R1 + distillation, 24 ep.                    & 89.83 & 87.2 $\pm$ 0.8 \\
     R3  & R1 + distillation, 48 ep. (final, 3 seeds)   & 90.86 & 87.5 $\pm$ 0.6 \\
-    \midrule
-    & R2 with $\alpha = 0.9$                           & 90.27 & 88.1 $\pm$ 0.5 \\
-    & R1 with lr $10^{-4}$                             & 89.89 & 87.4 $\pm$ 1.1 \\
-    & R1 + Res4 fine-tuned                             & 90.52 & 88.2 $\pm$ 0.7 \\
-    & R1 with X3D-L backbone (5.4M)                    & 89.83 & 87.2 $\pm$ 0.5 \\
-    & R0 with 32 frames (10.9 GFLOPs)                  & 88.76 & 85.8 $\pm$ 2.6 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -839,34 +712,19 @@ view as the deployed configuration.
 
 \subsection{Cost}
 
-Table~\ref{tab:cost} compares the deployed student with the teacher. The
-student has 29 times fewer parameters and 25 times fewer FLOPs and is
-twice as fast on CPU. On the MI250 GPU the two have similar latency:
+The deployed model has 3.01M parameters and 5.46 GFLOPs per view against
+86.2M and 135 for the teacher, and needs 208\,ms against 400\,ms per clip
+on an AMD EPYC 7413 CPU with 16 threads. On the MI250 GPU the two have
+similar latency (30 and 24\,ms at batch 1, 118 and 136 clips/s at batch 16
+in fp16):
 channel-wise 3D convolutions are limited by memory bandwidth, while the
-dense matrix products of the transformer run close to peak. The advantage
-of the compact model is therefore largest on CPUs and memory-limited
-devices, which is where a per-camera detector runs.
+dense matrix products of the transformer run close to peak. The advantage of the compact model is therefore largest on CPUs and
+memory-limited devices, which is where a per-camera detector runs. INT8
+quantisation with ONNX Runtime is not useful here: it doubles CPU latency,
+because channel-wise 3D convolutions have no efficient integer kernels,
+and costs 1.5 points of accuracy. Training one fold takes 48 minutes for
+the student and 12 for the teacher on one GCD, at 5.8 and 9.4 GB.
 
-\begin{table}[t]
-  \centering
-  \caption{Cost of one model at $16\times224\times224$. GPU: one AMD MI250
-  GCD; CPU: AMD EPYC 7413, 16 threads, PyTorch.}
-  \label{tab:cost}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lcc}
-    \toprule
-    & MA-X3D & VideoMAE-B \\
-    \midrule
-    Parameters                               & 3.01M & 86.2M \\
-    GFLOPs per view                          & 5.46  & 135 \\
-    GPU latency, batch 1, fp32 (ms)          & 30    & 24 \\
-    GPU throughput, batch 16, fp16 (clips/s) & 118   & 136 \\
-    CPU latency, batch 1 (ms)                & 208   & 400 \\
-    Training per fold (min)                  & 48    & 12 \\
-    Peak training memory (GB)                & 5.8   & 9.4 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
 
 \subsection{Qualitative analysis}
 
