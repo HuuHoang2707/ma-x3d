@@ -132,3 +132,18 @@ def test_grouped_test_split_keeps_scenes_apart(tmp_path):
     assert not set(tr) & set(te) and len(tr) + len(te) == 40
     assert rep["test_fight"] == len(te) // 2  # balanced
     assert np.load(tmp_path / "out/test_x.npy").shape == (len(te), 8, 3, 32, 32)
+
+
+def test_subsample_keeps_groups_and_balance():
+    from ma_x3d.data.dataset import subsample
+
+    labels = np.array([1] * 100 + [0] * 100)
+    groups = np.arange(200)
+    groups[10:13] = 10  # one 3-clip group
+    idx = np.arange(200)
+    sub = subsample(idx, labels, groups, 0.5, seed=0)
+    assert 90 <= len(sub) <= 110
+    assert abs(labels[sub].mean() - 0.5) < 0.1
+    owner = set(sub.tolist())
+    assert {10, 11, 12} <= owner or not ({10, 11, 12} & owner)  # the group stays together
+    assert (subsample(idx, labels, groups, 0.5, seed=0) == sub).all()  # deterministic

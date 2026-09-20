@@ -33,6 +33,9 @@ class DataConfig:
     exclude_duplicates: bool = True
     augment: bool = True
     augment_multiplier: int = 2  # each training clip appears this many times per epoch
+    # fraction of the fold's training clips actually used (1.0 = all); the subset is
+    # drawn by same-scene group and keeps the class balance (low-data study)
+    train_fraction: float = 1.0
     # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)
     train_span: list[float] | None = field(default_factory=lambda: [0.6, 1.0])
     rotation_deg: float = 10.0

@@ -1,0 +1,6 @@
+# Wide kernels in all four residual stages (final recipe).
+_base_: ../exp/e11_kd_long.yaml
+name: v2_wk_all_stages
+description: final recipe, 5x5 kernels in Res2-Res5
+model:
+  wk_stages: [res2, res3, res4, res5]

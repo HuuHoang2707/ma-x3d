@@ -1,0 +1,6 @@
+# Low-data study: 50% of each fold's training clips, recipe R1.
+_base_: ../exp/e05_lr_backbone5e-5.yaml
+name: d50_ma_x3d
+description: MA-X3D, 50% of the training clips
+data:
+  train_fraction: 0.50

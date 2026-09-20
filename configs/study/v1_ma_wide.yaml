@@ -1,0 +1,7 @@
+# Stronger Motion Attention: 8 temporal modes, wider gate (final recipe).
+_base_: ../exp/e11_kd_long.yaml
+name: v1_ma_wide
+description: final recipe, MA with 8 modes and reduction 2
+model:
+  ma_modes: 8
+  ma_reduction: 2

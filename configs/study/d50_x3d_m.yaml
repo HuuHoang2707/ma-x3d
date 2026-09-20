@@ -1,0 +1,6 @@
+# Low-data study: 50% of each fold's training clips, recipe R1.
+_base_: ../exp/b3_x3d_m.yaml
+name: d50_x3d_m
+description: X3D-M, 50% of the training clips
+data:
+  train_fraction: 0.50

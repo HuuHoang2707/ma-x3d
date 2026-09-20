@@ -71,6 +71,25 @@ class ClipDataset(Dataset):
         return clip, int(self.labels[idx])
 
 
+def subsample(idx: np.ndarray, labels: np.ndarray, groups, fraction: float,
+              seed: int) -> np.ndarray:
+    """A fixed fraction of the training clips, by whole groups, class balance kept."""
+    rng = np.random.default_rng(seed)
+    keep = []
+    for c in (0, 1):
+        pool = idx[labels[idx] == c]
+        ids = np.unique(groups[pool]) if groups is not None else pool
+        order = rng.permutation(len(ids))
+        target, taken = int(round(fraction * len(pool))), []
+        for k in order:
+            if len(taken) >= target:
+                break
+            taken += (pool[groups[pool] == ids[k]].tolist() if groups is not None
+                      else [int(ids[k])])
+        keep += taken
+    return np.sort(np.array(keep, dtype=np.int64))
+
+
 def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     d = cfg.data
     xtr, ytr = array_paths(d.root, "train")
@@ -83,6 +102,8 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
         exclude = np.load(root / "train_exclude.npy")
     split = make_splits(ytr, yte, d.protocol, d.val_fraction, d.val_blocks, d.split_seed,
                         groups, exclude, d.n_folds, d.fold)
+    if d.train_fraction < 1.0:
+        split["train"] = subsample(split["train"], ytr, groups, d.train_fraction, d.split_seed)
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
         "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,
