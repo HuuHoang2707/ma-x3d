@@ -684,13 +684,17 @@ Neither module alone changes OOF accuracy significantly, and the control
 that keeps the Motion Attention parameters but feeds the gate an all-zero
 motion map performs as well as the module with the real motion map. The
 gain of the gate on this dataset therefore cannot be attributed to the
-motion cue. The wide kernel behaves differently: the learned ring is used
-by the trained network, since setting it to zero at test time lowers
-single-model accuracy from 87.6\% to 80.6\%, and the ring carries 30\% of
-the kernel magnitude; but removing the ring from training (the X3D-M row)
-costs no accuracy, so the network reaches the same performance with
-$3\times3$ kernels.
-% TODO: add p4 (dense 5x5) and p5 (ring at backbone lr) rows when they finish.
+motion cue. The wide kernel is used by the trained network but is not needed: setting
+the learned ring to zero at test time lowers single-model accuracy from
+87.6\% to 80.6\%, and the ring carries 30\% of the kernel magnitude, yet a
+network trained without it (the X3D-M row) reaches the same accuracy. The
+two design choices behind the ring make no difference either. Inflating
+the kernel to a dense $5\times5$ tensor, which the reparameterisation is
+meant to improve on, gives 90.90, and training the ring at the backbone
+learning rate instead of the higher one gives 91.16; both are within noise
+of the reparameterised form (91.03) and of X3D-M (90.90). Under a tuned
+recipe the network therefore reaches the same accuracy with $3\times3$
+kernels, however the wider support is parameterised.
 
 \begin{table}[t]
   \centering
@@ -707,6 +711,8 @@ $3\times3$ kernels.
     + MA                       & 90.65 & $-0.19$ [$-0.95$, $+0.57$] & 0.75 & 87.9 $\pm$ 0.5 \\
     \quad gate, motion zeroed  & 91.09 & $+0.25$ [$-0.63$, $+1.20$] & 0.68 & 88.4 $\pm$ 1.2 \\
     + WK                       & 91.03 & $+0.19$ [$-0.82$, $+1.20$] & 0.81 & 88.0 $\pm$ 0.9 \\
+    \quad dense $5\times5$     & 90.90 & $+0.06$ [$-0.76$, $+0.88$] & 1.00 & 87.8 $\pm$ 1.1 \\
+    \quad ring at backbone lr  & 91.16 & $+0.32$ [$-0.51$, $+1.14$] & 0.54 & 87.8 $\pm$ 1.0 \\
     + MA + WK (3 seeds)        & 90.86 & $-0.04$ [$-0.72$, $+0.63$] & 0.78 & 87.5 $\pm$ 0.6 \\
     \quad ring zeroed at test  & --    & --     & --   & 80.6 \\
     \bottomrule
