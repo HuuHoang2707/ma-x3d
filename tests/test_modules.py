@@ -116,3 +116,18 @@ def test_zero_motion_input_removes_motion(x3d_blocks):
     clip = torch.rand(1, 3, 16, 64, 64)
     assert m.motion(clip).abs().max() == 0
     assert MAX3D(copy.deepcopy(x3d_blocks), ma).motion(clip).abs().max() > 0
+
+
+def test_diff_residual_and_burst_pool_start_as_identity():
+    from ma_x3d.models.interaction import BurstPool, FeatureDiffResidual
+
+    x = torch.rand(2, 24, 8, 16, 16)
+    r = FeatureDiffResidual(24)
+    assert torch.allclose(r(x), x, atol=1e-6)  # zero-initialised projection
+    r.project.weight.data.normal_(0, 0.1)
+    assert not torch.allclose(r(x), x, atol=1e-6)  # and it does something once trained
+
+    z = torch.rand(2, 32, 8, 4, 4)
+    b = BurstPool(32)
+    assert torch.allclose(b(z), z.mean((2, 3, 4), keepdim=True), atol=1e-6)
+    assert b(z).shape == (2, 32, 1, 1, 1)

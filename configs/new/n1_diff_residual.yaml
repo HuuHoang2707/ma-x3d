@@ -1,0 +1,6 @@
+# Temporal-difference residual (adds a motion signal) on the tuned X3D-M baseline.
+_base_: ../exp/p0_x3d_m.yaml
+name: n1_diff_residual
+description: X3D-M + feature-difference residual in Res3 and Res4
+model:
+  diff_residual: [res3, res4]

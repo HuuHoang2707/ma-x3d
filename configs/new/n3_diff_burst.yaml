@@ -1,0 +1,7 @@
+# Both new modules together.
+_base_: ../exp/p0_x3d_m.yaml
+name: n3_diff_burst
+description: X3D-M + difference residual + burst pooling
+model:
+  diff_residual: [res3, res4]
+  burst_pool: true

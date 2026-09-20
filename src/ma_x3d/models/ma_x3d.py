@@ -33,6 +33,7 @@ class MAX3D(nn.Module):
         motion_clip: float = 0.2,
         motion_input: str = "frames",
         input_size: int = 224,
+        diff_residual: nn.ModuleDict | None = None,
     ):
         super().__init__()
         self.blocks = blocks
@@ -44,6 +45,7 @@ class MAX3D(nn.Module):
         self.motion_clip = motion_clip
         self.motion_input = motion_input
         self.input_size = input_size
+        self.diff_residual = diff_residual or nn.ModuleDict()
         self.register_buffer("mean", torch.tensor(KINETICS_MEAN).view(1, 3, 1, 1, 1), False)
         self.register_buffer("std", torch.tensor(KINETICS_STD).view(1, 3, 1, 1, 1), False)
 
@@ -59,6 +61,8 @@ class MAX3D(nn.Module):
         x = (clip - self.mean) / self.std if self.normalize_input else clip
         for i, block in enumerate(self.blocks[: last + 1]):
             x = block(x)
+            if str(i) in self.diff_residual:
+                x = self.diff_residual[str(i)](x)
             if i == self.ma_after and self.motion_attn is not None:
                 x = self.motion_attn(x, motion)
             if i == STAGES["res5"] and self.eaa is not None:

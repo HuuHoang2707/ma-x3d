@@ -5,6 +5,7 @@ import torch.nn as nn
 from ..config import ModelConfig
 from .eaa import EfficientAdditiveAttention
 from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
+from .interaction import BurstPool, FeatureDiffResidual
 from .motion_attention import MotionAttention
 from .teacher import TEACHERS, VideoMAEClassifier
 from .tv import TV_MODELS, TorchvisionVideo
@@ -63,7 +64,12 @@ def build_model(cfg: ModelConfig) -> nn.Module:
         ma = MotionAttention(STAGE_CHANNELS[cfg.ma_stage], cfg.ma_modes, cfg.ma_temporal_kernel,
                              cfg.ma_reduction)
     eaa = EfficientAdditiveAttention(STAGE_CHANNELS["res5"]) if cfg.eaa else None
+    diff = nn.ModuleDict({str(STAGES[st]): FeatureDiffResidual(STAGE_CHANNELS[st])
+                          for st in cfg.diff_residual})
+    if cfg.burst_pool:
+        pool = blocks[STAGES["head"]].pool
+        pool.pool = BurstPool(pool.post_conv.in_channels)
     if cfg.motion_input not in ("frames", "zero"):
         raise ValueError(f"motion_input must be frames|zero, got {cfg.motion_input!r}")
     return MAX3D(blocks, ma, cfg.ma_stage, eaa, cfg.normalize_input, cfg.motion_multiscale,
-                 cfg.motion_clip, cfg.motion_input, cfg.input_size)
+                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff)

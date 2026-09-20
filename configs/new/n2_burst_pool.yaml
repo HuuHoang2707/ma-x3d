@@ -1,0 +1,6 @@
+# Attention pooling over time instead of the head's average pooling.
+_base_: ../exp/p0_x3d_m.yaml
+name: n2_burst_pool
+description: X3D-M + burst pooling
+model:
+  burst_pool: true
