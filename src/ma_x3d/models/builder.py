@@ -4,8 +4,8 @@ import torch.nn as nn
 
 from ..config import ModelConfig
 from .eaa import EfficientAdditiveAttention
-from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
 from .interaction import BurstPool, FeatureDiffResidual
+from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
 from .motion_attention import MotionAttention
 from .teacher import TEACHERS, VideoMAEClassifier
 from .tv import TV_MODELS, TorchvisionVideo
