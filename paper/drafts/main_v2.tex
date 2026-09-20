@@ -160,12 +160,12 @@ Section~\ref{sec:conclusion} concludes.
 \subsection{Violence detection}
 
 Hand-crafted methods encode motion along dense trajectories~\cite{idt},
-optical-flow magnitude~\cite{vif} or acceleration~\cite{hockey}, and are
-sensitive to viewpoint and lighting. Two-stream networks~\cite{twostream}
-learn from RGB and optical flow, which is often more expensive than the
+optical-flow magnitude~\cite{vif} or acceleration~\cite{hockey}. Two-stream
+networks~\cite{twostream} add optical flow, which often costs more than the
 network itself; 3D convolutional networks~\cite{c3d,i3d,slowfast,x3d} learn
 from RGB alone, and video transformers~\cite{timesformer,videoswin} extend
-self-attention to space and time at the price of large-scale pre-training.
+self-attention to space and time, at the price of large-scale
+pre-training.
 
 On RWF-2000, ConvLSTM~\cite{convlstm} reports 77.00\% and
 C3D~\cite{c3d} 82.75\%. The Flow Gated Network~\cite{rwf2000} gates an RGB
@@ -738,15 +738,12 @@ slightly stronger when violence is present.
 \section{Limitations}
 
 Our conclusions rest on three datasets of 1{,}000 to 2{,}000 clips, whose
-test splits hold 200 to 400 clips, so one point of accuracy is two to four
-clips; this is why we report paired intervals and tests rather than single
-numbers. The modules were evaluated in the configuration proposed for
-them, on a single backbone family: a different placement or a larger
-motion branch may behave differently, and our finding that they do not
-help a tuned X3D-M should not be read as a statement about motion cues in
-general. The distillation study uses one teacher, and the schedule control
-shows that most of its effect is the longer schedule; a stronger or
-multi-teacher setup was not tried. Test accuracy is 1--3 points below
+test splits hold 200 to 400 clips, so one point is two to four clips; this
+is why we report paired tests. The modules were evaluated in the
+configuration proposed for them and on one backbone family, so our finding
+that they do not help a tuned X3D-M is not a statement about motion cues in
+general. The distillation study uses one teacher, and the control shows
+that most of its effect is the longer schedule. Test accuracy is 1--3 points below
 out-of-fold accuracy for every model, including the teacher, which
 suggests that the test clips are harder than the training clips rather
 than that the models overfit the folds. Finally, the person-centred crop
