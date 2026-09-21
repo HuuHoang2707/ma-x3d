@@ -147,3 +147,19 @@ def test_subsample_keeps_groups_and_balance():
     owner = set(sub.tolist())
     assert {10, 11, 12} <= owner or not ({10, 11, 12} & owner)  # the group stays together
     assert (subsample(idx, labels, groups, 0.5, seed=0) == sub).all()  # deterministic
+
+
+def test_joint_dataset_adds_extra_training_clips(small_arrays, tmp_path):
+    import shutil
+
+    from ma_x3d.data.dataset import JointDataset
+
+    other = tmp_path / "other"
+    shutil.copytree(small_arrays, other)
+    cfg = load_config(overrides=[f"data.root={small_arrays}", "data.val_blocks=10",
+                                 f"data.extra_roots={other}"])
+    ds = build_datasets(cfg)
+    assert isinstance(ds["train"], JointDataset)
+    assert len(ds["train"]) == 2 * len(build_datasets(load_config(
+        overrides=[f"data.root={small_arrays}", "data.val_blocks=10"]))["train"])
+    assert len(ds["train"].indices) == len(ds["train"].main.indices)  # fold clips only

@@ -1,0 +1,11 @@
+# Joint training on all three datasets; evaluation stays on RWF-2000.
+# The epoch is 3x longer, so the schedule is shortened to keep the update count similar.
+_base_: ../exp/p0_x3d_m.yaml
+name: j1_joint_all
+description: X3D-M, final recipe, trained on RWF-2000 + Hockey + RLVS
+data:
+  extra_roots: [dataset/hockey, dataset/rlvs]
+train:
+  epochs: 20
+  probe_epochs: 2
+  patience: 8

@@ -99,6 +99,19 @@ def subsample(idx: np.ndarray, labels: np.ndarray, groups, fraction: float,
     return np.sort(np.array(keep, dtype=np.int64))
 
 
+class JointDataset(torch.utils.data.ConcatDataset):
+    """Training clips of several datasets. `indices` refers to the main one, which is
+    what the fold split, the teacher check and the logs are about."""
+
+    def __init__(self, main: ClipDataset, extras: list[ClipDataset]):
+        super().__init__([main, *extras])
+        self.main = main
+
+    @property
+    def indices(self) -> np.ndarray:
+        return self.main.indices
+
+
 def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     d = cfg.data
     xtr, ytr = array_paths(d.root, "train")
@@ -130,6 +143,18 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
                             boxes=boxes.get("test")),
         "val": None,
     }
+    if d.extra_roots:  # joint training: add the training clips of other datasets
+        extras = []
+        for other in d.extra_roots:
+            ox, oy = array_paths(other, "train")
+            oy = np.load(oy)
+            keep = np.arange(len(oy))
+            ex = Path(other) / "train_exclude.npy"
+            if d.exclude_duplicates and ex.exists():
+                keep = np.setdiff1d(keep, np.load(ex))
+            extras.append(ClipDataset(ox, oy, keep, d.frames, True, aug,
+                                      d.augment_multiplier, d.train_span))
+        out["train"] = JointDataset(out["train"], extras)
     if split["val"] is not None:
         out["val"] = ClipDataset(xtr, ytr, split["val"], d.frames, False,
                                  boxes=boxes.get("train"))

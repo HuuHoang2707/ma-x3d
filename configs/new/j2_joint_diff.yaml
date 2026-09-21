@@ -1,0 +1,6 @@
+# Joint training with the difference residual (the module we ship).
+_base_: j1_joint_all.yaml
+name: j2_joint_diff
+description: joint training + difference residual
+model:
+  diff_residual: [res3, res4]

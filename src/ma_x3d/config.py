@@ -39,6 +39,9 @@ class DataConfig:
     # zoom into a stored box to normalise the scale of the actors:
     # "" (off), "largest" (biggest person), "union" (all people), "motion" (moving region)
     roi_zoom: str = ""
+    # extra dataset roots whose training clips are added to the training set (their
+    # test clips are never used); evaluation stays on `root`
+    extra_roots: list[str] = field(default_factory=list)
     # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)
     train_span: list[float] | None = field(default_factory=lambda: [0.6, 1.0])
     rotation_deg: float = 10.0
@@ -175,6 +178,8 @@ def _coerce(value: Any, default: Any) -> Any:
         return float(value)
     if isinstance(default, int) and isinstance(value, str):
         return int(value)
+    if isinstance(default, list) and isinstance(value, str):
+        return [value]  # a single entry may be given without brackets
     if isinstance(default, list) and isinstance(value, list) and default:
         return [_coerce(v, default[0]) for v in value]
     return value
