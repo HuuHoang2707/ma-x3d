@@ -159,7 +159,11 @@ def test_joint_dataset_adds_extra_training_clips(small_arrays, tmp_path):
     cfg = load_config(overrides=[f"data.root={small_arrays}", "data.val_blocks=10",
                                  f"data.extra_roots={other}"])
     ds = build_datasets(cfg)
+    alone = build_datasets(load_config(
+        overrides=[f"data.root={small_arrays}", "data.val_blocks=10"]))["train"]
     assert isinstance(ds["train"], JointDataset)
-    assert len(ds["train"]) == 2 * len(build_datasets(load_config(
-        overrides=[f"data.root={small_arrays}", "data.val_blocks=10"]))["train"])
-    assert len(ds["train"].indices) == len(ds["train"].main.indices)  # fold clips only
+    # the fold's clips plus every training clip of the other dataset
+    extra_clips = len(np.load(other / "train_y.npy"))
+    assert len(ds["train"]) == len(alone) + extra_clips * cfg.data.augment_multiplier
+    assert len(ds["train"].indices) == len(alone.indices)  # fold clips only
+    assert len(ds["val"]) == 4 and len(ds["test"]) == 8  # evaluation is untouched
