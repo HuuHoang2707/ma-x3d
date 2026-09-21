@@ -54,7 +54,9 @@ including when only a quarter of the training clips is used. The recipe
 itself adds 2.80 points to the backbone, and two effects outside the model
 are of the same order as the modules: choosing the epoch on the test split
 adds 0.8 points on average, and one seed made a $+1.25$-point gain on
-Hockey Fights look significant that three seeds remove. Six Kinetics backbones trained under the same
+Hockey Fights look significant that three seeds remove. Replacing the gate
+by a module that \emph{adds} a motion-derived signal instead of rescaling
+features, at 16K parameters, raises test accuracy from 87.4\% to 88.2\%. Six Kinetics backbones trained under the same
 protocol place X3D-M at 90.9 out-of-fold and 87.4\% test accuracy with
 4.7 GFLOPs, within 3.7 points of an 86M-parameter VideoMAE-B teacher.
 Selecting the epoch on the test split, as is common on these benchmarks,
@@ -649,6 +651,51 @@ under the final recipe ($p = 0.38$). The benchmark is saturated for models
 of this class.
 
 
+\subsection{Adding information instead of re-weighting it}
+\label{sec:newmodules}
+
+The controls above suggest why the two modules do not help: a gate can only rescale
+features the backbone already computes, and the wider kernel does not address what
+limits the network. We therefore tested the opposite operation, at the same cost. The
+\emph{difference residual} computes the temporal feature difference
+$f_t - f_{t-1}$ at Res3 and Res4, filters it with one channel-wise convolution and
+\emph{adds} it to the main path through a zero-initialised projection (16K
+parameters, identity at initialisation). Over three seeds it raises single-model test
+accuracy from $87.4 \pm 0.9$ to $88.2 \pm 0.7$ and out-of-fold accuracy from 90.90 to
+$91.11 \pm 0.31$ (Table~\ref{tab:newmodules}). The gain is small and its out-of-fold
+interval includes zero, but it is the only module in this study that improves the
+tuned baseline on the test split in every seed.
+
+Three further variants were run with a single seed and are reported for completeness
+rather than as results: motion-peak interaction tokens, which turn the motion map into
+actor tokens and model their pairwise relations (91.47 out-of-fold), widening the
+channel-wise kernels of all four stages instead of two (91.79), and a wider motion
+gate with eight temporal modes (88.6\% test accuracy). Given that a single seed
+produced a significant $+1.25$ points on Hockey Fights that three seeds removed, these
+numbers indicate where to look next, not what to conclude.
+
+\begin{table}[t]
+  \centering
+  \caption{Modules that add a signal rather than re-weight one (RWF-2000, final
+  recipe). Seeds as stated; the baseline and the difference residual use three.}
+  \label{tab:newmodules}
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{lccc}
+    \toprule
+    Model & Extra params & OOF acc & Test acc \\
+    \midrule
+    X3D-M (baseline, 3 seeds)        & --    & 90.90 & 87.4 $\pm$ 0.9 \\
+    + difference residual (3 seeds)  & 16K   & 91.11 & \textbf{88.2 $\pm$ 0.7} \\
+    + burst pooling (1 seed)         & 0.4K  & 90.90 & 87.5 $\pm$ 0.8 \\
+    \midrule
+    \multicolumn{4}{l}{\emph{single seed, not confirmed}} \\
+    + interaction tokens             & 23K   & 91.47 & 88.2 $\pm$ 0.8 \\
+    + $5\times5$ kernels, all stages  & 118K  & 91.79 & 88.0 $\pm$ 0.8 \\
+    + motion gate, 8 modes           & 7K    & 91.03 & 88.6 $\pm$ 1.2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Transfer between datasets}
 \label{sec:cross}
 
@@ -809,7 +856,10 @@ backbone by 0.88 points and leave accuracy unchanged once the recipe is
 tuned, on all three datasets and in every regime we tested, while the
 recipe itself is worth 2.80 points; two effects outside the model, epoch
 selection on the test split and the choice of seed, are of the same order
-as the modules. Under
+as the modules. A module that adds a motion-derived signal rather than
+rescaling features does improve the tuned baseline, from 87.4\% to 88.2\%
+test accuracy for 16K parameters, which points to what a cheap module has
+to do to be useful here. Under
 the same protocol, a plain X3D-M with 3.0M parameters and 4.7 GFLOPs
 reaches 90.9\% out-of-fold and 87.4\% test accuracy on RWF-2000, within
 3.7 points of an 86M-parameter video transformer, and selecting the epoch

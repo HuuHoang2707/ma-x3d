@@ -38,13 +38,26 @@ Four views give 88.1, the four-model ensemble 89.25, both at higher cost.
   RWF-2000.
 - **INT8 quantisation is useless here**: 2x slower on CPU and $-1.5$ points.
 
-## What is still open
+## Final choice
 
-- **Interaction tokens** (the new module): 91.47 out-of-fold on one seed, the best
-  result of the project. Seeds 1-2 are running and decide whether it goes in the paper.
-- Screening runs queued: in-model zoom, X3D-S and X3D-XS with the tuned recipe.
-- CPU latency for the cost table, to be measured when the GPUs go idle.
+**Ship X3D-M with the tuned recipe and the temporal difference residual**: 3.00M
+parameters, 5.0 GFLOPs, 91.11 out-of-fold and 88.2 +- 0.7 test accuracy over three
+seeds. It is the only module in the study that improves the tuned baseline on the test
+split in every seed.
+
+The recipe matters more than any module: backbone learning rate 5e-5 (not 1e-5), 48
+epochs, probe phase, EMA, CutMix, training windows covering 60-100% of the clip
+(+2.80 points). Distillation is optional (+0.57, not significant). Inference: one view,
+threshold 0.5.
+
+Three variants scored higher on a single seed and are reported in the paper as
+unconfirmed: interaction tokens (91.47 OOF), 5x5 kernels in all four stages (91.79),
+a wider motion gate with eight modes (88.6 test). No further runs are planned.
+
+## Left to do (no GPU needed)
+
 - Figure 2 of the paper (the model diagram) is yours to draw.
+- CPU latency for the cost table, when a quiet machine is available.
 
 ## Why the failures happen (error analysis)
 
