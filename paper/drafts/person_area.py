@@ -50,7 +50,6 @@ def person_area(indices: np.ndarray, frames: int = 6) -> np.ndarray:
         out[k] = [np.median(largest), np.median(union), np.median(count)]
     return out
 
-
 def main() -> None:
     run = Path(sys.argv[1])
     probs, y, _ = _oof(run, "1clip")

@@ -35,33 +35,28 @@ Hanoi, Vietnam}
 \maketitle
 
 \begin{abstract}
-Violence detection has to run on every stream of a surveillance
-installation, so the model that is deployed is usually a compact one, and
-the literature reports steady gains for small architectural additions to
-such models. We examine what these gains consist of. MA-X3D extends X3D-M
-with two identity-initialised modules that add 1.2\% parameters and fuse
-away at inference: a Motion Attention gate driven by a multi-scale
-frame-difference map, and a reparameterised $5\times5$ channel-wise kernel
-in the two earliest residual stages. We evaluate them on RWF-2000, Hockey
-Fights and RLVS under a protocol that removes duplicated clips, groups
-clips of the same scene, takes every decision on out-of-fold predictions
-of a grouped four-fold cross-validation, and uses each test split once.
-Under this protocol, and averaged over three seeds, the modules add 0.88
-out-of-fold points when the backbone is fine-tuned conventionally
-($[+0.04, +1.71]$) and nothing once the training recipe is tuned
-($-0.04$ points on RWF-2000, $-0.04$ on Hockey Fights, $-0.19$ on RLVS),
-including when only a quarter of the training clips is used. The recipe
-itself adds 2.80 points to the backbone, and two effects outside the model
-are of the same order as the modules: choosing the epoch on the test split
-adds 0.8 points on average, and one seed made a $+1.25$-point gain on
-Hockey Fights look significant that three seeds remove. Replacing the gate
-by a module that \emph{adds} a motion-derived signal instead of rescaling
-features, at 16K parameters, raises test accuracy from 87.4\% to 88.2\%. Six Kinetics backbones trained under the same
-protocol place X3D-M at 90.9 out-of-fold and 87.4\% test accuracy with
-4.7 GFLOPs, within 3.7 points of an 86M-parameter VideoMAE-B teacher.
-Selecting the epoch on the test split, as is common on these benchmarks,
-adds 0.8 points on average, which is more than most reported architectural
-gains.
+Violence detection runs on every stream of a surveillance installation, so
+the deployed model is a compact one, and the literature reports steady
+gains for small architectural additions to such models. We ask what those
+gains consist of. Two cheap modules are studied on X3D-M: a Motion
+Attention gate driven by a multi-scale frame difference, and a
+reparameterised $5\times5$ channel-wise kernel that fuses away at
+inference. They are evaluated on RWF-2000, Hockey Fights and RLVS under a
+protocol that removes duplicated clips, keeps clips of the same scene in
+one fold, takes every decision on out-of-fold predictions and uses each
+test split once. Over three seeds the modules add 0.88 out-of-fold points
+to a conventionally fine-tuned backbone and nothing once the training
+recipe is tuned ($-0.04$ points, $p=0.78$), including with a quarter of
+the training clips; matched controls show why, since a gate fed an
+all-zero motion map performs as well as the real one. The recipe itself is
+worth 2.80 points, while two effects outside the model are of the same
+order as the modules: choosing the epoch on the test split adds 0.8 points,
+and one seed produced a significant $+1.25$ points on Hockey Fights that
+three seeds removed. A module that \emph{adds} a motion-derived signal
+instead of rescaling features does help, raising test accuracy from 87.4\%
+to 88.2\% for 16K parameters. Six Kinetics backbones trained under the same
+protocol give the first comparable accuracy--cost reference for this task,
+and nine RWF-2000 training clips turn out to be copies of test clips.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -696,44 +691,6 @@ numbers indicate where to look next, not what to conclude.
   \end{tabular}
 \end{table}
 
-\subsection{Transfer between datasets}
-\label{sec:cross}
-
-Table~\ref{tab:cross} applies every model to the test splits of the other
-two datasets without any adaptation. In-domain accuracy says little about
-what happens then: a detector trained on Hockey Fights, where it reaches
-96\%, falls to 64--65\% on RWF-2000, and one trained on RLVS, where it
-reaches 98\%, falls to 59\% on Hockey Fights. The three benchmarks measure
-different things, which is a reason to be careful with results reported on
-a single one of them. The teacher transfers better than the compact models
-when it is trained on the smallest dataset (74.6 against 63.6 from Hockey
-to RWF-2000), and the modules give a small advantage in five of the six
-transfer directions (mean $+0.65$ points), the one consistent signal we
-observe in their favour besides Hockey Fights.
-
-\begin{table}[t]
-  \centering
-  \caption{Transfer: test accuracy of single models trained on the row
-  dataset and applied to the column dataset without adaptation (final
-  recipe, mean over fold models). In-domain results in brackets.}
-  \label{tab:cross}
-  \setlength{\tabcolsep}{2.5pt}
-  \begin{tabular}{llccc}
-    \toprule
-    Trained on & Model & RWF-2000 & Hockey & RLVS \\
-    \midrule
-    RWF-2000 & X3D-M      & (87.4) & 74.9 & 88.0 \\
-             & MA-X3D     & (87.6) & 76.0 & 88.3 \\
-             & VideoMAE-B & (91.2) & 67.2 & 90.7 \\
-    Hockey   & X3D-M      & 63.6 & (96.1) & 67.8 \\
-             & MA-X3D     & 65.4 & (95.6) & 65.9 \\
-             & VideoMAE-B & 74.6 & (94.9) & 76.1 \\
-    RLVS     & X3D-M      & 79.7 & 58.5 & (98.5) \\
-             & MA-X3D     & 81.2 & 59.6 & (98.2) \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
 \subsection{What the training recipe contributes}
 
 Table~\ref{tab:recipe} changes the recipe one step at a time for MA-X3D.
@@ -794,6 +751,44 @@ benchmark is therefore within the range that the evaluation procedure
 alone can produce, which is the reason for the protocol of
 Section~\ref{sec:protocol}.
 
+\subsection{Transfer between datasets}
+\label{sec:cross}
+
+Table~\ref{tab:cross} applies every model to the test splits of the other
+two datasets without any adaptation. In-domain accuracy says little about
+what happens then: a detector trained on Hockey Fights, where it reaches
+96\%, falls to 64--65\% on RWF-2000, and one trained on RLVS, where it
+reaches 98\%, falls to 59\% on Hockey Fights. The three benchmarks measure
+different things, which is a reason to be careful with results reported on
+a single one of them. The teacher transfers better than the compact models
+when it is trained on the smallest dataset (74.6 against 63.6 from Hockey
+to RWF-2000), and the modules give a small advantage in five of the six
+transfer directions (mean $+0.65$ points), the one consistent signal we
+observe in their favour besides Hockey Fights.
+
+\begin{table}[t]
+  \centering
+  \caption{Transfer: test accuracy of single models trained on the row
+  dataset and applied to the column dataset without adaptation (final
+  recipe, mean over fold models). In-domain results in brackets.}
+  \label{tab:cross}
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{llccc}
+    \toprule
+    Trained on & Model & RWF-2000 & Hockey & RLVS \\
+    \midrule
+    RWF-2000 & X3D-M      & (87.4) & 74.9 & 88.0 \\
+             & MA-X3D     & (87.6) & 76.0 & 88.3 \\
+             & VideoMAE-B & (91.2) & 67.2 & 90.7 \\
+    Hockey   & X3D-M      & 63.6 & (96.1) & 67.8 \\
+             & MA-X3D     & 65.4 & (95.6) & 65.9 \\
+             & VideoMAE-B & 74.6 & (94.9) & 76.1 \\
+    RLVS     & X3D-M      & 79.7 & 58.5 & (98.5) \\
+             & MA-X3D     & 81.2 & 59.6 & (98.2) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Inference options}
 \label{sec:options}
 
@@ -828,6 +823,25 @@ The gate reacts to the class: the mean absolute gain $|G|$ over the OOF
 clips is 0.059 on violent clips and 0.050 on non-violent ones, so the
 modulation of the Res4 features stays within a few per cent and is
 slightly stronger when violence is present.
+
+\section{Recommendations}
+
+The measurements above suggest four practices for work on these benchmarks,
+none of which costs more than the experiments already being run.
+\emph{Audit the split.} Nine training clips of RWF-2000 are copies of test
+clips, and the copy of RLVS we obtained stores every video twice; a
+descriptor comparison takes minutes and the split files can be released.
+\emph{State how the checkpoint is chosen.} On our runs, choosing the epoch
+on the test split adds 0.8 points, which is more than most reported
+architectural gains. \emph{Report more than one seed.} A single seed
+produced a significant $+1.25$ points on Hockey Fights that three seeds
+removed. \emph{Compare at a matched cost and a matched recipe.} A tuned
+training schedule is worth 2.80 points here, so a module compared against
+an under-trained baseline will appear to work even when it does not.
+
+All splits, audit files, configurations, seeds and training code are
+released, together with the per-clip out-of-fold predictions used for every
+test in this paper, so each number can be recomputed without retraining.
 
 %======================================================================
 \section{Limitations}
