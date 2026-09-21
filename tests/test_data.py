@@ -176,7 +176,8 @@ def test_motion_sampling_follows_the_motion():
     profile[40:50] = 1.0  # the clip only moves near the end
     idx = motion_indices(profile, 16)  # evaluation: the window holding the most motion
     assert idx.max() >= 45 and idx.max() <= 63  # it covers the moving part
-    assert idx.mean() > uniform_indices(64, 16).mean()  # and sits later than uniform
+    inside = lambda a: int(((a >= 40) & (a < 50)).sum())  # noqa: E731
+    assert inside(idx) > inside(uniform_indices(64, 16))  # more frames on the motion
     assert (np.diff(idx) >= 0).all() and len(idx) == 16
     rng = random.Random(0)
     picks = [motion_indices(profile, 16, rng).mean() for _ in range(20)]
