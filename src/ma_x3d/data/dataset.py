@@ -37,6 +37,7 @@ class ClipDataset(Dataset):
         augment: ClipAugment | None = None,
         multiplier: int = 1,
         span_frac: tuple[float, float] | None = None,
+        boxes: np.ndarray | None = None,
     ):
         self.x_path = str(x_path)
         self.labels = labels
@@ -46,6 +47,7 @@ class ClipDataset(Dataset):
         self.augment = augment if training else None
         self.multiplier = multiplier if training else 1
         self.span_frac = tuple(span_frac) if span_frac else None
+        self.boxes = boxes
         self._x = None
 
     def __len__(self) -> int:
@@ -66,6 +68,13 @@ class ClipDataset(Dataset):
             t = uniform_indices(stored, self.frames)
         clip = torch.from_numpy(np.ascontiguousarray(self.x[idx, t]))  # [T, C, H, W] uint8
         clip = clip.permute(1, 0, 2, 3).float().div_(255.0)  # [C, T, H, W] in [0, 1]
+        if self.boxes is not None:  # one static box per clip: actors at a common scale
+            x1, y1, x2, y2 = self.boxes[idx]
+            if x2 - x1 > 8 and y2 - y1 > 8:
+                size = clip.shape[-1]
+                clip = torch.nn.functional.interpolate(
+                    clip[:, :, y1:y2, x1:x2].permute(1, 0, 2, 3), size=(size, size),
+                    mode="bilinear", align_corners=False).permute(1, 0, 2, 3)
         if self.augment is not None:
             clip = self.augment(clip)
         return clip, int(self.labels[idx])
@@ -104,15 +113,26 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
                         groups, exclude, d.n_folds, d.fold)
     if d.train_fraction < 1.0:
         split["train"] = subsample(split["train"], ytr, groups, d.train_fraction, d.split_seed)
+    boxes = {}
+    if d.roi_zoom:
+        suffix = "" if d.roi_zoom == "largest" else f"_{d.roi_zoom}"
+        for part in ("train", "test"):
+            f = root / f"person_box{suffix}_{part}.npy"
+            if not f.exists():
+                raise FileNotFoundError(
+                    f"{f} missing; run `ma-x3d boxes --root {d.root} --mode {d.roi_zoom}`")
+            boxes[part] = np.load(f)
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
         "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,
-                             d.train_span),
-        "test": ClipDataset(xte, yte, split["test"], d.frames, False),
+                             d.train_span, boxes.get("train")),
+        "test": ClipDataset(xte, yte, split["test"], d.frames, False,
+                            boxes=boxes.get("test")),
         "val": None,
     }
     if split["val"] is not None:
-        out["val"] = ClipDataset(xtr, ytr, split["val"], d.frames, False)
+        out["val"] = ClipDataset(xtr, ytr, split["val"], d.frames, False,
+                                 boxes=boxes.get("train"))
     return out
 
 

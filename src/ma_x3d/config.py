@@ -36,6 +36,9 @@ class DataConfig:
     # fraction of the fold's training clips actually used (1.0 = all); the subset is
     # drawn by same-scene group and keeps the class balance (low-data study)
     train_fraction: float = 1.0
+    # zoom into a stored box to normalise the scale of the actors:
+    # "" (off), "largest" (biggest person), "union" (all people), "motion" (moving region)
+    roi_zoom: str = ""
     # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)
     train_span: list[float] | None = field(default_factory=lambda: [0.6, 1.0])
     rotation_deg: float = 10.0

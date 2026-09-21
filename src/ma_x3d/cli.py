@@ -59,6 +59,13 @@ def cmd_build_dataset(a):
     build_dataset(a.videos, a.out, a.roi, a.device or "cuda")
 
 
+def cmd_boxes(a):
+    from .data.person_boxes import build
+
+    for split in ("train", "test"):
+        build(a.root, split, a.device or "cuda", a.mode)
+
+
 def cmd_build_clips(a):
     from .data.audit import grouped_test_split
     from .data.preprocess import build_clip_arrays
@@ -321,6 +328,12 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--roi", default="cluster", choices=["cluster", "union", "none"])
     s.add_argument("--device")
     s.set_defaults(fn=cmd_build_dataset)
+
+    s = sub.add_parser("boxes", help="one person box per stored clip (needs [preprocess])")
+    s.add_argument("--root", default="dataset/rwf2000")
+    s.add_argument("--mode", default="largest", choices=["largest", "union", "motion"])
+    s.add_argument("--device")
+    s.set_defaults(fn=cmd_boxes)
 
     s = sub.add_parser("build-clips", help="videos without an official split -> grouped "
                        "train/test arrays (needs [preprocess]); run `audit` afterwards")

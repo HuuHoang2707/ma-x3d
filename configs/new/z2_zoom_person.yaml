@@ -1,0 +1,6 @@
+# Second-stage crop: zoom into the largest detected person.
+_base_: ../exp/p0_x3d_m.yaml
+name: z2_zoom_person
+description: X3D-M, final recipe, zoom into the largest person
+data:
+  roi_zoom: largest

@@ -1,0 +1,6 @@
+# Second-stage crop: zoom into the moving region (error analysis: missed clips have tiny actors).
+_base_: ../exp/p0_x3d_m.yaml
+name: z1_zoom_motion
+description: X3D-M, final recipe, zoom into the motion region
+data:
+  roi_zoom: motion
