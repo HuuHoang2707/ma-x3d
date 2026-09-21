@@ -19,8 +19,8 @@ modules, conventional recipe                 seeds 3 | dOOF +0.88 [+0.04, +1.71]
 modules, final recipe                        seeds 3 | dOOF -0.04 [-0.72, +0.63] McNemar p 0.7798 (max over seeds 1.0000)
 
 == Components and controls (final recipe), each against X3D-M
-+ MA                                         seeds 1 | OOF 90.65 (±0.00) F1 0.908 | test 87.9 ± 0.5 P 0.896 R 0.857 F1 0.876 AUC 0.948
-   vs X3D-M                                  seeds 1 | dOOF -0.19 [-0.95, +0.57] McNemar p 0.7493 (max over seeds 0.7493)
++ MA                                         seeds 2 | OOF 90.59 (±0.06) F1 0.907 | test 87.8 ± 0.8 P 0.898 R 0.854 F1 0.875 AUC 0.946
+   vs X3D-M                                  seeds 2 | dOOF -0.25 [-0.85, +0.32] McNemar p 0.7493 (max over seeds 0.7493)
 + MA gate, zero motion                       seeds 1 | OOF 91.09 (±0.00) F1 0.912 | test 88.4 ± 1.2 P 0.893 R 0.874 F1 0.883 AUC 0.948
    vs X3D-M                                  seeds 1 | dOOF +0.25 [-0.63, +1.20] McNemar p 0.6835 (max over seeds 0.6835)
 + WK                                         seeds 1 | OOF 91.03 (±0.00) F1 0.911 | test 88.0 ± 0.9 P 0.887 R 0.871 F1 0.879 AUC 0.947
