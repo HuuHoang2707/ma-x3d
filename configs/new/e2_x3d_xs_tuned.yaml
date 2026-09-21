@@ -1,0 +1,10 @@
+# The tuned recipe + difference residual on the 0.6 GFLOP variant.
+_base_: ../exp/p0_x3d_m.yaml
+name: e2_x3d_xs_tuned
+description: X3D-XS, final recipe + difference residual
+data:
+  frames: 4
+model:
+  backbone: x3d_xs
+  input_size: 160
+  diff_residual: [res3, res4]

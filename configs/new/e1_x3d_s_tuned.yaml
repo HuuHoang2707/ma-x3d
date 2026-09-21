@@ -1,0 +1,10 @@
+# The tuned recipe + difference residual on the 2.0 GFLOP variant (edge point).
+_base_: ../exp/p0_x3d_m.yaml
+name: e1_x3d_s_tuned
+description: X3D-S, final recipe + difference residual
+data:
+  frames: 13
+model:
+  backbone: x3d_s
+  input_size: 160
+  diff_residual: [res3, res4]
