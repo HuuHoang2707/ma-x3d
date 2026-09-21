@@ -1,0 +1,6 @@
+# Motion sampling combined with the module we ship.
+_base_: s1_motion_sampling.yaml
+name: s2_motion_sampling_diff
+description: motion sampling + difference residual
+model:
+  diff_residual: [res3, res4]

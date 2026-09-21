@@ -167,3 +167,17 @@ def test_joint_dataset_adds_extra_training_clips(small_arrays, tmp_path):
     assert len(ds["train"]) == len(alone) + extra_clips * cfg.data.augment_multiplier
     assert len(ds["train"].indices) == len(alone.indices)  # fold clips only
     assert len(ds["val"]) == 4 and len(ds["test"]) == 8  # evaluation is untouched
+
+
+def test_motion_sampling_follows_the_motion():
+    from ma_x3d.data.sampling import motion_indices
+
+    profile = np.zeros(64)
+    profile[40:50] = 1.0  # the clip only moves near the end
+    idx = motion_indices(profile, 16)  # evaluation: the window holding the most motion
+    assert idx.max() >= 45 and idx.max() <= 63  # it covers the moving part
+    assert idx.mean() > uniform_indices(64, 16).mean()  # and sits later than uniform
+    assert (np.diff(idx) >= 0).all() and len(idx) == 16
+    rng = random.Random(0)
+    picks = [motion_indices(profile, 16, rng).mean() for _ in range(20)]
+    assert np.mean(picks) > 28  # training windows are drawn towards the motion too

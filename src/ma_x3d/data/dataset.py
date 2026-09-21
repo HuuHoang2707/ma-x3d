@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from ..config import Config
 from .augment import ClipAugment
-from .sampling import random_indices, uniform_indices
+from .sampling import motion_indices, random_indices, uniform_indices
 from .splits import make_splits
 
 CLASS_NAMES = ("NonFight", "Fight")  # label 0, label 1
@@ -38,6 +38,7 @@ class ClipDataset(Dataset):
         multiplier: int = 1,
         span_frac: tuple[float, float] | None = None,
         boxes: np.ndarray | None = None,
+        profiles: np.ndarray | None = None,
     ):
         self.x_path = str(x_path)
         self.labels = labels
@@ -48,6 +49,7 @@ class ClipDataset(Dataset):
         self.multiplier = multiplier if training else 1
         self.span_frac = tuple(span_frac) if span_frac else None
         self.boxes = boxes
+        self.profiles = profiles
         self._x = None
 
     def __len__(self) -> int:
@@ -62,7 +64,10 @@ class ClipDataset(Dataset):
     def __getitem__(self, i: int):
         idx = int(self.indices[i % len(self.indices)])
         stored = self.x.shape[1]
-        if self.training:
+        if self.profiles is not None:  # frames where the clip moves most
+            t = motion_indices(self.profiles[idx], self.frames,
+                               random if self.training else None)
+        elif self.training:
             t = random_indices(stored, self.frames, random, span_frac=self.span_frac)
         else:
             t = uniform_indices(stored, self.frames)
@@ -135,12 +140,21 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
                 raise FileNotFoundError(
                     f"{f} missing; run `ma-x3d boxes --root {d.root} --mode {d.roi_zoom}`")
             boxes[part] = np.load(f)
+    profiles = {}
+    if d.sampling == "motion":
+        for part in ("train", "test"):
+            f = root / f"motion_profile_{part}.npy"
+            if not f.exists():
+                raise FileNotFoundError(f"{f} missing; run `ma-x3d profiles --root {d.root}`")
+            profiles[part] = np.load(f)
+    elif d.sampling != "uniform":
+        raise ValueError(f"sampling must be uniform|motion, got {d.sampling!r}")
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
         "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,
-                             d.train_span, boxes.get("train")),
+                             d.train_span, boxes.get("train"), profiles.get("train")),
         "test": ClipDataset(xte, yte, split["test"], d.frames, False,
-                            boxes=boxes.get("test")),
+                            boxes=boxes.get("test"), profiles=profiles.get("test")),
         "val": None,
     }
     if d.extra_roots:  # joint training: add the training clips of other datasets
@@ -157,7 +171,7 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
         out["train"] = JointDataset(out["train"], extras)
     if split["val"] is not None:
         out["val"] = ClipDataset(xtr, ytr, split["val"], d.frames, False,
-                                 boxes=boxes.get("train"))
+                                 boxes=boxes.get("train"), profiles=profiles.get("train"))
     return out
 
 

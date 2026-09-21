@@ -42,6 +42,8 @@ class DataConfig:
     # extra dataset roots whose training clips are added to the training set (their
     # test clips are never used); evaluation stays on `root`
     extra_roots: list[str] = field(default_factory=list)
+    # uniform | motion: which stored frames a clip uses (motion needs `ma-x3d profiles`)
+    sampling: str = "uniform"
     # Training window as a fraction of the stored clip; null = thesis sampler (see sampling.py)
     train_span: list[float] | None = field(default_factory=lambda: [0.6, 1.0])
     rotation_deg: float = 10.0

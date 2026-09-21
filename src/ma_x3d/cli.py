@@ -66,6 +66,13 @@ def cmd_boxes(a):
         build(a.root, split, a.device or "cuda", a.mode)
 
 
+def cmd_profiles(a):
+    from .data.person_boxes import build_profiles
+
+    for split in ("train", "test"):
+        build_profiles(a.root, split)
+
+
 def cmd_build_clips(a):
     from .data.audit import grouped_test_split
     from .data.preprocess import build_clip_arrays
@@ -334,6 +341,10 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--mode", default="largest", choices=["largest", "union", "motion"])
     s.add_argument("--device")
     s.set_defaults(fn=cmd_boxes)
+
+    s = sub.add_parser("profiles", help="motion energy per stored frame (motion sampling)")
+    s.add_argument("--root", default="dataset/rwf2000")
+    s.set_defaults(fn=cmd_profiles)
 
     s = sub.add_parser("build-clips", help="videos without an official split -> grouped "
                        "train/test arrays (needs [preprocess]); run `audit` afterwards")

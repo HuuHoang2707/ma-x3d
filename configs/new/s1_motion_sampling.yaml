@@ -1,0 +1,6 @@
+# Frames chosen where the clip moves most (Song et al. 2019: key frames, not uniform).
+_base_: ../exp/p0_x3d_m.yaml
+name: s1_motion_sampling
+description: X3D-M, final recipe, motion-guided temporal sampling
+data:
+  sampling: motion

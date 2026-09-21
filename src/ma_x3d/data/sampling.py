@@ -38,3 +38,31 @@ def random_indices(
     base = np.linspace(start, start + span - 1, num_out)
     jitter = np.array([rng.randint(-1, 1) for _ in range(num_out)])
     return np.sort(np.clip(base + jitter, 0, num_stored - 1).astype(int))
+
+
+def motion_indices(profile: np.ndarray, num_out: int, rng: random.Random | None = None,
+                   span_frac: tuple[float, float] = (0.4, 0.8)) -> np.ndarray:
+    """Frames concentrated where the clip moves most (Song et al., 2019: key frames
+    instead of uniform sampling).
+
+    profile: motion energy per stored frame. At evaluation (rng=None) the window with
+    the most motion is taken; during training a window is drawn with probability
+    proportional to the motion it contains, which keeps the sampler stochastic.
+    """
+    stored = len(profile)
+    span = int(np.clip(round(stored * (span_frac[0] + span_frac[1]) / 2), num_out, stored))
+    if rng is not None:
+        span = int(np.clip(round(stored * rng.uniform(*span_frac)), num_out, stored))
+    weight = np.convolve(profile, np.ones(span), mode="valid")  # motion inside each window
+    if weight.sum() <= 0:
+        start = 0 if rng is None else rng.randint(0, len(weight) - 1)
+    elif rng is None:
+        start = int(weight.argmax())
+    else:
+        p = weight / weight.sum()
+        start = int(np.searchsorted(np.cumsum(p), rng.random(), side="right"))
+        start = min(start, len(weight) - 1)
+    base = np.linspace(start, start + span - 1, num_out)
+    if rng is not None:
+        base = base + np.array([rng.randint(-1, 1) for _ in range(num_out)])
+    return np.sort(np.clip(base, 0, stored - 1).astype(int))

@@ -101,3 +101,27 @@ def build(root: str | Path, split: str, device: str = "cuda",
     print(f"{split}: median crop side {np.median(side):.2f} of the frame, "
           f"{(side > 0.99).mean() * 100:.0f}% keep the full frame")
     return path
+
+
+def motion_profile(x: np.ndarray, size: int = 64) -> np.ndarray:
+    """Motion energy per stored frame (for motion-guided temporal sampling)."""
+    import torch
+    import torch.nn.functional as F
+
+    clip = torch.from_numpy(np.ascontiguousarray(x)).float() / 255       # [T, C, H, W]
+    small = F.interpolate(clip, size=(size, size), mode="bilinear", align_corners=False)
+    d = (small[1:] - small[:-1]).abs().mean((1, 2, 3))
+    return torch.cat([d[:1], d]).numpy()
+
+
+def build_profiles(root: str | Path, split: str) -> Path:
+    from .dataset import array_paths
+
+    xp, _ = array_paths(root, split)
+    x = np.load(xp, mmap_mode="r")
+    out = np.stack([motion_profile(x[i]) for i in tqdm(range(len(x)), desc=f"profiles {split}")])
+    path = Path(root) / f"motion_profile_{split}.npy"
+    np.save(path, out.astype(np.float32))
+    peak = out.argmax(1) / out.shape[1]
+    print(f"{split}: motion peaks at {np.percentile(peak, [25, 50, 75]).round(2)} of the clip")
+    return path
