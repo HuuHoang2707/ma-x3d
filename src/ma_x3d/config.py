@@ -72,6 +72,7 @@ class ModelConfig:
     # stages whose output gets a zero-initialised temporal-difference residual
     diff_residual: list[str] = field(default_factory=list)
     burst_pool: bool = False  # attention pooling over time in the head
+    zoom: str = ""  # "motion": crop to the moving region inside the model (no detector)
     interaction: bool = False  # motion-peak interaction tokens (logit correction)
     interaction_peaks: int = 6
 

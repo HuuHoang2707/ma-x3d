@@ -1,0 +1,6 @@
+# Scale normalisation computed inside the model: no detector, no preprocessing step.
+_base_: ../exp/p0_x3d_m.yaml
+name: z3_zoom_in_model
+description: X3D-M, final recipe, motion zoom inside the model
+model:
+  zoom: motion

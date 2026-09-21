@@ -11,6 +11,7 @@ from .motion_attention import MotionAttention
 from .teacher import TEACHERS, VideoMAEClassifier
 from .tv import TV_MODELS, TorchvisionVideo
 from .wide_kernel import widen_stage
+from .zoom import MotionZoom
 
 # Kinetics-400 checkpoints of pytorchvideo's X3D: (file, depth factor). XS, S and M share
 # one architecture and differ in input (XS: 4x160x160, S: 13x160x160, M: 16x224x224).
@@ -67,6 +68,9 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     eaa = EfficientAdditiveAttention(STAGE_CHANNELS["res5"]) if cfg.eaa else None
     diff = nn.ModuleDict({str(STAGES[st]): FeatureDiffResidual(STAGE_CHANNELS[st])
                           for st in cfg.diff_residual})
+    if cfg.zoom not in ("", "motion"):
+        raise ValueError(f"zoom must be ''|motion, got {cfg.zoom!r}")
+    zoom = MotionZoom() if cfg.zoom == "motion" else None
     inter = (MotionPeakInteraction(STAGE_CHANNELS["res4"], cfg.num_classes,
                                    cfg.interaction_peaks) if cfg.interaction else None)
     if cfg.burst_pool:
@@ -75,4 +79,4 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     if cfg.motion_input not in ("frames", "zero"):
         raise ValueError(f"motion_input must be frames|zero, got {cfg.motion_input!r}")
     return MAX3D(blocks, ma, cfg.ma_stage, eaa, cfg.normalize_input, cfg.motion_multiscale,
-                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter)
+                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter, zoom)

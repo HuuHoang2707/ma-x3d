@@ -143,3 +143,16 @@ def test_x3d_small_run_at_160(name, frames):
         feat = m.features(torch.rand(1, 3, frames, 224, 224), "res5")
         assert feat.shape[-2:] == (5, 5)  # 160 / 32
         assert m(torch.rand(1, 3, frames, 224, 224)).shape == (1, 2)
+
+
+def test_in_model_zoom_crops_to_the_moving_region():
+    from ma_x3d.models.builder import build_model
+
+    m = build_model(ModelConfig(pretrained=False, motion_attention=False, wide_kernel="none",
+                                zoom="motion")).eval()
+    clip = torch.rand(1, 3, 16, 224, 224) * 0.02
+    clip[:, :, :, 20:60, 20:60] += torch.rand(1, 3, 16, 40, 40)
+    box = m.zoom.boxes(clip)[0]
+    assert box[2] < 150 and box[3] < 150  # the box follows the motion, not the frame
+    with torch.no_grad():
+        assert m(clip).shape == (1, 2)
