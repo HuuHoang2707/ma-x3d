@@ -1,0 +1,7 @@
+# Trained on the whole official training split, no selection: the number that is
+# directly comparable with published results (which also train on 100% of the split).
+_base_: ../exp/e19_long_no_kd.yaml
+name: f1_full_maxd
+description: MA-X3D, tuned recipe, trained on the full training split
+data:
+  protocol: full

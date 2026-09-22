@@ -79,6 +79,8 @@ def make_splits(
         tr, va = blocked_holdout(train_labels, val_fraction, n_blocks, seed)
         return {"train": np.intersect1d(tr, keep), "val": np.intersect1d(va, keep),
                 "test": test_idx}
-    if protocol == "test_as_val":
+    if protocol in ("test_as_val", "full"):
+        # "full": train on every training clip, no selection at all (the epoch budget
+        # comes from the cross-validation); "test_as_val": the notebook's selection.
         return {"train": keep, "val": None, "test": test_idx}
     raise ValueError(f"unknown protocol {protocol!r}")

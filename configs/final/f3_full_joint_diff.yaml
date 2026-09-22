@@ -1,0 +1,6 @@
+# Full split, joint training, plus the difference residual.
+_base_: f2_full_joint.yaml
+name: f3_full_joint_diff
+description: full split + joint + difference residual
+model:
+  diff_residual: [res3, res4]

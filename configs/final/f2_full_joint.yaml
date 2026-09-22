@@ -1,0 +1,9 @@
+# Same, with the three datasets joined.
+_base_: f1_full_maxd.yaml
+name: f2_full_joint
+description: MA-X3D, tuned recipe, full split + Hockey + RLVS
+data:
+  extra_roots: [dataset/hockey, dataset/rlvs]
+train:
+  epochs: 20
+  probe_epochs: 2

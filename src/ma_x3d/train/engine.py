@@ -215,10 +215,13 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
     }
     if ds["val"] is not None:
         loaders["val"] = make_loader(ds["val"], t.batch_size, False, w)
+    elif cfg.data.protocol == "full":  # no validation: keep the last epoch
+        loaders["val"] = None
     else:  # test_as_val protocol
         loaders["val"] = loaders["test"]
     log(f"run {out} | protocol {cfg.data.protocol} | train {len(ds['train'])} samples "
-        f"({len(ds['train'].indices)} clips) | val {len(loaders['val'].dataset)} | "
+        f"({len(ds['train'].indices)} clips) | val "
+        f"{len(loaders['val'].dataset) if loaders['val'] else 0} | "
         f"test {len(ds['test'])}" + (f" | {world} GPUs x {t.batch_size // world} clips"
                                      if world > 1 else ""))
 
@@ -272,7 +275,10 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
         stop = False
         if main:
             judge = ema.module if ema is not None else model
-            va = predict(judge, loaders["val"], device, amp, t.label_smoothing)["metrics"]
+            if loaders["val"] is None:  # protocol "full": no selection, keep the last epoch
+                va = {"loss": float("nan"), "accuracy": float("nan"), "f1": float(epoch)}
+            else:
+                va = predict(judge, loaders["val"], device, amp, t.label_smoothing)["metrics"]
             dt = time.time() - t0
             improved = va["f1"] > best_f1
             if improved:
