@@ -66,6 +66,12 @@ def cmd_boxes(a):
         build(a.root, split, a.device or "cuda", a.mode)
 
 
+def cmd_build_rwf(a):
+    from .data.preprocess import build_rwf
+
+    build_rwf(a.videos, a.out, a.roi, a.workers, size=a.size, enhance_frames=not a.no_enhance)
+
+
 def cmd_profiles(a):
     from .data.person_boxes import build_profiles
 
@@ -341,6 +347,15 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--mode", default="largest", choices=["largest", "union", "motion"])
     s.add_argument("--device")
     s.set_defaults(fn=cmd_boxes)
+
+    s = sub.add_parser("build-rwf", help="raw RWF-2000 videos -> npy arrays (needs [preprocess])")
+    s.add_argument("--videos", required=True, help="folder with train/ and val/")
+    s.add_argument("--out", required=True)
+    s.add_argument("--roi", default="cluster", choices=["none", "cluster", "union", "adaptive"])
+    s.add_argument("--size", type=int, default=224)
+    s.add_argument("--workers", type=int, default=12)
+    s.add_argument("--no-enhance", action="store_true", help="skip the bilateral filter + CLAHE")
+    s.set_defaults(fn=cmd_build_rwf)
 
     s = sub.add_parser("profiles", help="motion energy per stored frame (motion sampling)")
     s.add_argument("--root", default="dataset/rwf2000")

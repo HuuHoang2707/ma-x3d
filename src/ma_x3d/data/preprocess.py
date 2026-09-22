@@ -97,7 +97,22 @@ def person_roi(frames: np.ndarray, detector, n_sample: int = 12, margin: float =
     x1, y1 = min(b[0] for b in chosen), min(b[1] for b in chosen)
     x2, y2 = max(b[2] for b in chosen), max(b[3] for b in chosen)
     dx, dy = int((x2 - x1) * margin), int((y2 - y1) * margin)
-    return max(0, x1 - dx), max(0, y1 - dy), min(w, x2 + dx), min(h, y2 + dy)
+    x1, y1 = max(0, x1 - dx), max(0, y1 - dy)
+    x2, y2 = min(w, x2 + dx), min(h, y2 + dy)
+    if mode == "adaptive":
+        # Zooming all the way onto the actors removes the context the network needs
+        # (measured: a tight crop costs 1.8 points). Keep at least `min_frac` of the
+        # frame and cap the magnification at `max_zoom`.
+        min_frac, max_zoom = 0.5, 2.0
+        side = max(x2 - x1, y2 - y1, min_frac * min(h, w), min(h, w) / max_zoom)
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        x1, y1 = int(cx - side / 2), int(cy - side / 2)
+        x2, y2 = int(x1 + side), int(y1 + side)
+        x1, x2 = (0, min(w, int(side))) if x1 < 0 else ((max(0, w - int(side)), w)
+                                                        if x2 > w else (x1, x2))
+        y1, y2 = (0, min(h, int(side))) if y1 < 0 else ((max(0, h - int(side)), h)
+                                                        if y2 > h else (y1, y2))
+    return x1, y1, x2, y2
 
 
 def build_split(src_dir: str | Path, out_path: str | Path, detector, n: int = 64,
@@ -205,3 +220,73 @@ def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
     np.save(out_dir / "all_y.npy", np.array([label for _, label in videos], dtype=np.int64))
     np.save(out_dir / "bad.npy", bad)
     (out_dir / "names.txt").write_text("\n".join(Path(p).name for p, _ in videos))
+
+
+
+def _rwf_clip(args) -> tuple[int, np.ndarray | None]:
+    """One video of the official RWF-2000 layout -> [n, 3, size, size] uint8."""
+    import cv2
+    import torch
+
+    global _DETECTOR
+    index, path, roi, n, size, window_s, enhance_frames = args
+    torch.set_num_threads(2)
+    cv2.setNumThreads(1)
+    if _DETECTOR is None and roi != "none":
+        from ultralytics import YOLO
+
+        _DETECTOR = YOLO("yolov8n.pt")
+    frames = extract_frames(path, n, window_s)
+    if frames is None:
+        return index, None
+    x1, y1, x2, y2 = person_roi(frames, _DETECTOR, mode=roi)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) if enhance_frames else None
+    out = []
+    for f in frames:
+        crop = f[y1:y2, x1:x2]
+        crop = f if crop.size == 0 else crop
+        if clahe is not None:
+            crop = enhance(crop, clahe)
+        out.append(cv2.resize(crop, (size, size)).transpose(2, 0, 1))
+    return index, np.stack(out)
+
+
+def build_rwf(videos_root: str | Path, out_dir: str | Path, roi: str = "cluster",
+              workers: int = 12, n: int = 64, size: int = 224,
+              window_s: float | None = 5.0, enhance_frames: bool = True) -> None:
+    """Official RWF-2000 layout (train|val / Fight|NonFight) -> train/test npy arrays.
+
+    One array per split, Fight clips first, which is the order the audit and the folds
+    assume. `roi` selects the crop: none, cluster (thesis), union (CUE-Net), adaptive.
+    """
+    from multiprocessing import get_context
+
+    from ultralytics import YOLO
+
+    if roi != "none":
+        YOLO("yolov8n.pt")  # fetch the weights once, before the workers start
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for split, folder in (("train", "train"), ("test", "val")):
+        videos, labels = [], []
+        for label, cls in ((1, "Fight"), (0, "NonFight")):
+            d = Path(videos_root) / folder / cls
+            for f in sorted(d.iterdir()):
+                if f.suffix.lower() in (".avi", ".mp4"):
+                    videos.append(str(f))
+                    labels.append(label)
+        x = np.lib.format.open_memmap(out_dir / f"{split}_x.npy", mode="w+", dtype=np.uint8,
+                                      shape=(len(videos), n, 3, size, size))
+        jobs = [(i, v, roi, n, size, window_s, enhance_frames) for i, v in enumerate(videos)]
+        bad = []
+        with get_context("spawn").Pool(workers) as pool:
+            for i, arr in tqdm(pool.imap_unordered(_rwf_clip, jobs, chunksize=2),
+                               total=len(jobs), desc=f"{split} ({roi})"):
+                if arr is None:
+                    bad.append(i)
+                else:
+                    x[i] = arr
+        x.flush()
+        np.save(out_dir / f"{split}_y.npy", np.array(labels, dtype=np.int64))
+        (out_dir / f"{split}_names.txt").write_text("\n".join(Path(v).name for v in videos))
+        print(f"{split}: {len(videos)} clips ({sum(labels)} fight), {len(bad)} unreadable")
