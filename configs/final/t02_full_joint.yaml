@@ -1,0 +1,8 @@
+# Teacher for the final model: VideoMAE-B on the whole joint training set.
+_base_: ../exp/t01_videomae.yaml
+name: t02_full_joint_none
+description: VideoMAE-B teacher, winning preprocessing, joint training set
+data:
+  root: dataset/rwf_none
+  protocol: full
+  extra_roots: [dataset/hockey_none, dataset/rlvs_none]

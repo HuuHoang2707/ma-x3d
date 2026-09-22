@@ -1,0 +1,10 @@
+# The final model: winning preprocessing + joint training + difference residual + KD.
+_base_: f4_best.yaml
+name: f5_best_kd_none
+description: f4 + distillation from the joint VideoMAE-B teacher
+train:
+  distill: runs/t02_full_joint_none/seed0
+  distill_alpha: 0.5
+  distill_temp: 2.0
+  epochs: 48
+  patience: 16

@@ -78,38 +78,60 @@ either a confuser or a label error. The zoom experiments now queued test the fix
 | `docs/GUIDE.md` | how to train and evaluate yourself |
 | `paper/drafts/make_tables.py` | regenerates every number in the paper |
 
-## Preprocessing study, built from raw RWF-2000
+## Preprocessing study, built from raw RWF-2000 (seven variants, shared folds)
 
-Same recipe, same folds, same seed; only the preprocessing changes. The decision metric
-is out-of-fold accuracy over the 1,584 training clips; the test column is the four-fold
-ensemble scored once.
+Same recipe, same folds, same seed; only the preprocessing changes. Decision metric is
+out-of-fold accuracy over 1,584 training clips; test is the four-fold ensemble, scored once.
 
-| variant | crop | contrast | OOF acc | test (ens) | test (single) |
-|---|---|---|---|---|---|
-| `rp_none` | full frame | CLAHE | **92.55** | 89.50 | 89.13 ± 0.52 |
-| `rp_adaptive` | >= half frame, zoom <= 2x | CLAHE | 91.98 | 89.50 | 87.81 ± 2.22 |
-| `rp_noenh` | cluster crop | none | 90.40 | 87.00 | 87.19 ± 1.57 |
-| `rp_cluster` | cluster crop (the thesis pipeline) | CLAHE | 89.58 | 88.50 | 87.44 ± 0.99 |
-| `rp_union` | union of all people | CLAHE | 89.39 | 90.50 | 89.00 ± 1.35 |
-| `rp_plain` | full frame | none | training | | |
-| `rp_aspect` | full frame, 16:9 kept by padding | CLAHE | queued | | |
+| variant | crop | contrast | resize | OOF | test (ens) | test (single) |
+|---|---|---|---|---|---|---|
+| `rp_none` | none | CLAHE | stretch | **92.55** | 89.50 | 89.13 ± 0.52 |
+| `rp_plain` | none | none | stretch | 92.42 | 89.75 | 89.38 ± 1.42 |
+| `rp_aspect` | none | CLAHE | pad, 16:9 kept | 92.36 | 88.75 | 88.44 ± 1.27 |
+| `rp_adaptive` | >= half frame | CLAHE | stretch | 91.98 | 89.50 | 87.81 ± 2.22 |
+| `rp_noenh` | cluster | none | stretch | 90.40 | 87.00 | 87.19 ± 1.57 |
+| `rp_cluster` | cluster (thesis) | CLAHE | stretch | 89.58 | 88.50 | 87.44 ± 0.99 |
+| `rp_union` | union of people | CLAHE | stretch | 89.39 | 90.50 | 89.00 ± 1.35 |
 
-What this says:
+Paired tests against the thesis pipeline (`rp_cluster`), exact McNemar on the OOF clips:
 
-* Cropping to the people costs 2.97 OOF (92.55 -> 89.58). The gentler adaptive crop wins
-  most of that back but still does not beat leaving the frame alone. The error analysis
-  pointed the same way: the missed clips had small actors, and the fix was to stop
-  throwing the context away, not to zoom harder.
-* CLAHE costs 0.82 on its own (89.58 -> 90.40 once it is removed, same crop), so
-  `rp_plain` tests both together.
-* `rp_union` is the reason we select on OOF: it has the best test number of the five
-  (90.50) and the second worst OOF. On 400 test clips one clip is 0.25 points, and
-  picking by test would have chosen the weaker preprocessing.
-* The raw videos are 1280x720. Every variant so far squashes 16:9 into a square, which
-  makes people 1.78x too narrow relative to the Kinetics pretraining; `rp_aspect` keeps
-  the ratio and pads instead.
+| comparison | OOF diff | 95% CI | p |
+|---|---|---|---|
+| no crop vs thesis crop | **+2.97** | [+1.45, +4.48] | 0.0002 |
+| no crop, no CLAHE vs thesis crop | +2.84 | [+1.33, +4.36] | 0.0003 |
+| aspect kept vs thesis crop | +2.78 | [+1.20, +4.36] | 0.0008 |
+| adaptive crop vs thesis crop | +2.40 | [+1.07, +3.72] | 0.0007 |
+| no CLAHE vs CLAHE (both uncropped) | -0.13 | [-1.14, +0.88] | 0.90 |
+| aspect padding vs stretching | -0.19 | [-1.39, +1.01] | 0.84 |
 
-For reference, the same recipe on the user's own HDF5 crop gives 90.46 OOF, so the
-downloaded videos agree with the thesis data to within a point.
+So the whole effect is the crop. Dropping the person-box crop is worth about three points
+and is significant; CLAHE and the aspect ratio make no measurable difference once the
+frame is left alone. `rp_union` also shows why the decision is made on OOF: it has the
+best test score of the seven and the second worst OOF.
 
-_updated 2026-09-22_
+## What the modules are worth on that preprocessing
+
+The thesis ablation was measured on the cropped data. Re-measured on the data we now ship
+(`rp_none`, same folds, seed 0):
+
+| model | params | OOF | test (ens) | vs X3D-M |
+|---|---|---|---|---|
+| X3D-M (no modules) | 2.98 M | 92.80 | 89.50 | - |
+| MA-X3D (motion attention + wide kernels) | 3.03 M | 92.55 | 89.50 | -0.25, p = 0.72 |
+| MA-X3D + difference residual | 3.05 M | 92.68 | 89.00 | -0.13, p = 0.91 |
+
+Once the preprocessing is fixed, the modules neither help nor hurt: every difference is
+well inside the confidence interval. The honest statement for the paper is that the gain
+the thesis attributed to the modules came from the protocol and the preprocessing.
+
+## Test-time augmentation (no retraining, `rp_none` models)
+
+| views | OOF | test (ens) |
+|---|---|---|
+| 1 clip (reported cost) | 92.55 | 89.50 |
+| 2 (flip) | 92.55 | 90.25 |
+| 4 (2 offsets + flip) | 92.93 | 91.00 |
+| 8 (4 offsets + flip) | 93.24 | 90.75 |
+
+
+_updated 2026-09-23_

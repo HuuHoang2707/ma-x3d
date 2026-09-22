@@ -1,0 +1,12 @@
+# The winning preprocessing, joint training on all three datasets, difference residual.
+_base_: ../prep/rp_none.yaml
+name: f4_best_none
+description: best preprocessing (none) + joint training + difference residual
+data:
+  protocol: full
+  extra_roots: [dataset/hockey_none, dataset/rlvs_none]
+model:
+  diff_residual: [res3, res4]
+train:
+  epochs: 20
+  probe_epochs: 2

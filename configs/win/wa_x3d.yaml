@@ -1,0 +1,7 @@
+# Control: no MA-X3D modules, so the module delta is measured on the data we ship.
+_base_: ../prep/rp_none.yaml
+name: wa_x3d_none
+description: plain X3D-M, winning preprocessing
+model:
+  motion_attention: false
+  wide_kernel: none

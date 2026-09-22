@@ -1,0 +1,8 @@
+# Twice the temporal context; batch halved to fit.
+_base_: ../prep/rp_none.yaml
+name: wa_t32_none
+description: MA-X3D, 32 frames, winning preprocessing
+data:
+  frames: 32
+train:
+  batch_size: 6

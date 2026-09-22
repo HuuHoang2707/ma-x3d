@@ -1,0 +1,6 @@
+# MA-X3D plus the difference residual, the one added module that paid off.
+_base_: ../prep/rp_none.yaml
+name: wa_diff_none
+description: MA-X3D + difference residual, winning preprocessing
+model:
+  diff_residual: [res3, res4]
