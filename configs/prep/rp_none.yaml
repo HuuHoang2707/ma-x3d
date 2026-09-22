@@ -1,0 +1,6 @@
+# Preprocessing variant built from the raw videos; identical training for all.
+_base_: ../exp/e19_long_no_kd.yaml
+name: rp_none
+description: no crop, the full frame
+data:
+  root: dataset/rwf_none
