@@ -70,3 +70,41 @@ $P -c "
 import json
 r = json.load(open('runs/f4_best_$W/seed0/results.json'))['test']
 print('FINAL test accuracy %.2f  F1 %.3f  AUC %.3f' % (100*r['accuracy'], r['f1'], r['auc']))"
+
+# Distillation on the final model: one VideoMAE-B teacher on the same joint training
+# clips (the split guard checks that), then the student. KD was worth +0.57 OOF.
+cat > configs/final/t02_full_joint.yaml <<CFG
+# Teacher for the final model: VideoMAE-B on the whole joint training set.
+_base_: ../exp/t01_videomae.yaml
+name: t02_full_joint_$W
+description: VideoMAE-B teacher, winning preprocessing, joint training set
+data:
+  root: dataset/rwf_$W
+  protocol: full
+  extra_roots: [dataset/hockey_$W, dataset/rlvs_$W]
+CFG
+cat > configs/final/f5_best_kd.yaml <<CFG
+# The final model: winning preprocessing + joint training + difference residual + KD.
+_base_: f4_best.yaml
+name: f5_best_kd_$W
+description: f4 + distillation from the joint VideoMAE-B teacher
+train:
+  distill: runs/t02_full_joint_$W/seed0
+  distill_alpha: 0.5
+  distill_temp: 2.0
+  epochs: 48
+  patience: 16
+CFG
+HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+  --master_port=29678 -m ma_x3d.cli train configs/final/t02_full_joint.yaml --seed 0 \
+  > runs/logs/t02_full_joint_ddp.log 2>&1
+echo "teacher trained $(date +%H:%M)"
+HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+  --master_port=29679 -m ma_x3d.cli train configs/final/f5_best_kd.yaml --seed 0 \
+  > runs/logs/f5_best_kd_ddp.log 2>&1
+echo "final KD model trained $(date +%H:%M)"
+$P -c "
+import json
+for tag in ['f4_best_$W', 'f5_best_kd_$W']:
+    r = json.load(open(f'runs/{tag}/seed0/results.json'))['test']
+    print('%-20s test %.2f  F1 %.3f  AUC %.3f' % (tag, 100*r['accuracy'], r['f1'], r['auc']))"
