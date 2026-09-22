@@ -8,7 +8,8 @@ P=.venv/bin/python
 # Other users share these nodes, so pick GPUs that are actually idle rather than 0-3.
 pick_gpus () {  # how many
   while true; do
-    g=$($P -m ma_x3d.cli gpus 2>/dev/null | awk 'NR>1 && $5<=5 && $7<=10 {print $1}' \
+    g=$($P -m ma_x3d.cli gpus 2>/dev/null | awk -v m="${MAX3D_MAX_MEM:-5}" \
+        'NR>1 && $5<=m {print $1}' \
         | head -"$1" | paste -sd,)
     [ "$(echo "$g" | tr ',' '\n' | grep -c .)" -eq "$1" ] && { echo "$g"; return; }
     sleep 300
@@ -16,7 +17,7 @@ pick_gpus () {  # how many
 }
 
 echo "waiting for the five preprocessing variants $(date +%H:%M)"
-while [ "$(ls runs/rp_*/seed0/fold*/results.json 2>/dev/null | wc -l)" -lt 20 ]; do sleep 240; done
+while [ "$(ls runs/rp_*/seed0/fold*/results.json 2>/dev/null | wc -l)" -lt 24 ]; do sleep 240; done
 for d in runs/rp_*/seed0; do
   [ -f "$d/cv_eval.json" ] || HIP_VISIBLE_DEVICES=$(pick_gpus 1) $P -m ma_x3d.cli cv "$d" --variants 1clip \
     > /dev/null 2>&1

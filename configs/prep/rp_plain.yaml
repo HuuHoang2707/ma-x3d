@@ -1,0 +1,7 @@
+# Preprocessing variant built from the raw videos; identical training for all.
+# Cropping and CLAHE both measured negative on their own, so try neither.
+_base_: ../exp/e19_long_no_kd.yaml
+name: rp_plain
+description: full frame, no contrast enhancement
+data:
+  root: dataset/rwf_plain
