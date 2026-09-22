@@ -1,0 +1,6 @@
+# Wide kernels alone, on the preprocessing we ship.
+_base_: ../prep/rp_none.yaml
+name: wa_wk_none
+description: wide kernels only, winning preprocessing
+model:
+  motion_attention: false

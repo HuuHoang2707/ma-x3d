@@ -1,0 +1,6 @@
+# Motion Attention alone, on the preprocessing we ship.
+_base_: ../prep/rp_none.yaml
+name: wa_ma_none
+description: motion attention only, winning preprocessing
+model:
+  wide_kernel: none

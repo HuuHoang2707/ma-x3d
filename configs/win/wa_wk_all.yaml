@@ -1,0 +1,7 @@
+# The best module variant on the old data: 5x5 kernels in Res2-Res5.
+_base_: ../prep/rp_none.yaml
+name: wa_wk_all_none
+description: wide kernels in every stage, winning preprocessing
+model:
+  motion_attention: false
+  wk_stages: [res2, res3, res4, res5]
