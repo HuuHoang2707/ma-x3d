@@ -98,6 +98,11 @@ CFG
 HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
   --master_port=29678 -m ma_x3d.cli train configs/final/t02_full_joint.yaml --seed 0 \
   > runs/logs/t02_full_joint_ddp.log 2>&1
+if [ ! -f "runs/t02_full_joint_$W/seed0/results.json" ]; then
+  # the student waits for the teacher for ever, so stop here instead
+  echo "teacher failed, see runs/logs/t02_full_joint_ddp.log; f4 stands as the final model"
+  exit 1
+fi
 echo "teacher trained $(date +%H:%M)"
 HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
   --master_port=29679 -m ma_x3d.cli train configs/final/f5_best_kd.yaml --seed 0 \

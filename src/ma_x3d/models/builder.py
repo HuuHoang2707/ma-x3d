@@ -49,11 +49,11 @@ def x3d_blocks(pretrained: bool, num_classes: int, head_dropout: float,
 
 def build_model(cfg: ModelConfig) -> nn.Module:
     if cfg.backbone in TEACHERS:
-        if cfg.motion_attention or cfg.wide_kernel != "none" or cfg.eaa:
+        if cfg.motion_attention or cfg.wide_kernel != "none" or cfg.eaa or cfg.apn_crops:
             raise ValueError(f"{cfg.backbone} takes no MA-X3D modules")
         return VideoMAEClassifier(cfg.backbone, cfg.num_classes, cfg.pretrained)
     if cfg.backbone in TV_MODELS:
-        if cfg.motion_attention or cfg.wide_kernel != "none" or cfg.eaa:
+        if cfg.motion_attention or cfg.wide_kernel != "none" or cfg.eaa or cfg.apn_crops:
             raise ValueError(f"{cfg.backbone} takes no MA-X3D modules")
         return TorchvisionVideo(cfg.backbone, cfg.num_classes, cfg.pretrained)
     blocks = x3d_blocks(cfg.pretrained, cfg.num_classes, cfg.head_dropout, cfg.backbone)

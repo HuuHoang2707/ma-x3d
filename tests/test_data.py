@@ -182,3 +182,35 @@ def test_motion_sampling_follows_the_motion():
     rng = random.Random(0)
     picks = [motion_indices(profile, 16, rng).mean() for _ in range(20)]
     assert np.mean(picks) > 28  # training windows are drawn towards the motion too
+
+
+class _FakeBox:
+    def __init__(self, box):
+        self.xyxy = [box]
+
+
+class _FakeResult:
+    def __init__(self, boxes):
+        self.boxes = [_FakeBox(b) for b in boxes]
+
+
+def _detector(boxes_per_frame):
+    """Stand-in for YOLO: returns the given boxes, one list per sampled frame."""
+    def run(frames, **kw):
+        return [_FakeResult(b) for b in boxes_per_frame]
+    return run
+
+
+def test_adaptive_roi_keeps_context_with_one_person():
+    """The half-frame floor must hold even when only one box is found (one-box path)."""
+    import numpy as np
+
+    from ma_x3d.data.preprocess import person_roi
+
+    frames = np.zeros((12, 480, 640, 3), np.uint8)
+    one = [[(300, 200, 340, 280)]] + [[]] * 11
+    x1, y1, x2, y2 = person_roi(frames, _detector(one), mode="adaptive")
+    assert min(x2 - x1, y2 - y1) >= 0.5 * 480
+    # the tight modes keep their old behaviour
+    x1, y1, x2, y2 = person_roi(frames, _detector(one), mode="cluster")
+    assert (x2 - x1) < 0.5 * 480

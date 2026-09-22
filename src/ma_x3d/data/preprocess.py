@@ -81,7 +81,7 @@ def person_roi(frames: np.ndarray, detector, n_sample: int = 12, margin: float =
         if len(boxes) < 2:
             return 0, 0, w, h
         chosen = boxes
-    elif len(boxes) == 1:
+    elif len(boxes) == 1 and mode != "adaptive":  # adaptive falls through to its guard
         x1, y1, x2, y2 = boxes[0]
         return max(0, x1 - 50), max(0, y1 - 50), min(w, x2 + 50), min(h, y2 + 50)
     else:  # largest DBSCAN cluster of box centres; lone detections are noise
@@ -290,5 +290,6 @@ def build_rwf(videos_root: str | Path, out_dir: str | Path, roi: str = "cluster"
                     x[i] = arr
         x.flush()
         np.save(out_dir / f"{split}_y.npy", np.array(labels, dtype=np.int64))
+        np.save(out_dir / f"{split}_bad.npy", np.array(sorted(bad), dtype=np.int64))
         (out_dir / f"{split}_names.txt").write_text("\n".join(Path(v).name for v in videos))
         print(f"{split}: {len(videos)} clips ({sum(labels)} fight), {len(bad)} unreadable")

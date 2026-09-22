@@ -281,7 +281,7 @@ def train(cfg: Config, device: torch.device, resume: bool = False, overwrite: bo
                 va = predict(judge, loaders["val"], device, amp, t.label_smoothing)["metrics"]
             dt = time.time() - t0
             improved = va["f1"] > best_f1
-            if improved:
+            if improved and (loaders["val"] is not None or epoch + 1 == t.epochs):
                 best_f1, best_loss, no_improve = va["f1"], va["loss"], 0
                 torch.save({"model": judge.state_dict(), "epoch": epoch + 1, "val": va},
                            out / "best.pt")

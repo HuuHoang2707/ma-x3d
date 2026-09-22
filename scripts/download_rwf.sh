@@ -16,3 +16,7 @@ except Exception as e:
 " 2>&1 | tail -2
   sleep 300
 done
+[ -f dataset/rwf_raw/done.flag ] || {
+  echo "download never completed: $(find dataset/rwf_raw -name '*.avi' | wc -l)/2000 files"
+  exit 1
+}

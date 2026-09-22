@@ -117,6 +117,12 @@ class JointDataset(torch.utils.data.ConcatDataset):
         return self.main.indices
 
 
+def _needs(path: Path, how: str) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(f"{path} missing; run `{how}`")
+    return path
+
+
 def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     d = cfg.data
     xtr, ytr = array_paths(d.root, "train")
@@ -166,8 +172,17 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
             ex = Path(other) / "train_exclude.npy"
             if d.exclude_duplicates and ex.exists():
                 keep = np.setdiff1d(keep, np.load(ex))
+            # the extra clips need the same boxes and profiles as the main ones
+            ob = op = None
+            if d.roi_zoom:
+                suffix = "" if d.roi_zoom == "largest" else f"_{d.roi_zoom}"
+                ob = np.load(_needs(Path(other) / f"person_box{suffix}_train.npy",
+                                    f"ma-x3d boxes --root {other} --mode {d.roi_zoom}"))
+            if d.sampling == "motion":
+                op = np.load(_needs(Path(other) / "motion_profile_train.npy",
+                                    f"ma-x3d profiles --root {other}"))
             extras.append(ClipDataset(ox, oy, keep, d.frames, True, aug,
-                                      d.augment_multiplier, d.train_span))
+                                      d.augment_multiplier, d.train_span, ob, op))
         out["train"] = JointDataset(out["train"], extras)
     if split["val"] is not None:
         out["val"] = ClipDataset(xtr, ytr, split["val"], d.frames, False,

@@ -60,7 +60,10 @@ def audit(root: str | Path, dup_cos: float = 0.99, scene_cos: float = 0.9) -> di
     groups = _components(len(tr), list(zip(ii.tolist(), jj.tolist(), strict=True)))
     exact = [(int(i), int(j)) for i, j in zip(ii, jj, strict=True) if s_tr[i, j] >= dup_cos]
     second_copies = sorted({j for _, j in exact})
-    exclude = np.array(sorted(set(test_dups) | set(second_copies)), dtype=np.int64)
+    bad_path = root / "train_bad.npy"   # clips build_rwf could not decode
+    bad = np.load(bad_path).tolist() if bad_path.exists() else []
+    exclude = np.array(sorted(set(test_dups) | set(second_copies) | set(bad)),
+                       dtype=np.int64)
 
     conflicts = [(int(i), int(j)) for i, j in zip(ii, jj, strict=True) if ytr[i] != ytr[j]]
     sizes = np.bincount(groups)
@@ -69,6 +72,7 @@ def audit(root: str | Path, dup_cos: float = 0.99, scene_cos: float = 0.9) -> di
         "train_duplicates_of_test": test_dups,
         "train_exact_duplicate_pairs": exact,
         "excluded_from_training": exclude.tolist(),
+        "unreadable_clips": [int(i) for i in bad],
         "same_scene_pairs": int(len(ii)),
         "same_scene_pairs_with_different_labels": conflicts,
         "groups": int(groups.max() + 1),
