@@ -1,0 +1,6 @@
+# Attention prediction crops (Varghese et al. 2025): local branches fused with the global one.
+_base_: ../exp/p0_x3d_m.yaml
+name: a1_apn2
+description: X3D-M, final recipe, 2 attention crops fused with the global branch
+model:
+  apn_crops: 2

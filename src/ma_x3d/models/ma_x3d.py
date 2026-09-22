@@ -36,6 +36,7 @@ class MAX3D(nn.Module):
         diff_residual: nn.ModuleDict | None = None,
         interaction: nn.Module | None = None,
         zoom: nn.Module | None = None,
+        apn: nn.Module | None = None,
     ):
         super().__init__()
         self.blocks = blocks
@@ -50,6 +51,9 @@ class MAX3D(nn.Module):
         self.diff_residual = diff_residual or nn.ModuleDict()
         self.interaction = interaction
         self.zoom = zoom
+        self.apn = apn
+        if apn is not None:  # zero-initialised: the local branches start silent
+            self.apn_weight = nn.Parameter(torch.zeros(apn.crops))
         self.register_buffer("mean", torch.tensor(KINETICS_MEAN).view(1, 3, 1, 1, 1), False)
         self.register_buffer("std", torch.tensor(KINETICS_STD).view(1, 3, 1, 1, 1), False)
 
@@ -57,10 +61,10 @@ class MAX3D(nn.Module):
         m = motion_map(clip, self.motion_multiscale, self.motion_clip)
         return torch.zeros_like(m) if self.motion_input == "zero" else m
 
-    def _run(self, clip: torch.Tensor, last: int) -> torch.Tensor:  # noqa: C901
+    def _run(self, clip: torch.Tensor, last: int, resize: bool = True) -> torch.Tensor:  # noqa: C901, E501
         if self.zoom is not None:  # scale normalisation, before anything else
             clip = self.zoom(clip)
-        if clip.shape[-1] != self.input_size:  # e.g. X3D-XS/S run at 160x160
+        if resize and clip.shape[-1] != self.input_size:  # e.g. X3D-XS/S at 160x160
             size = (clip.shape[2], self.input_size, self.input_size)
             clip = F.interpolate(clip, size=size, mode="trilinear", align_corners=False)
         needs_motion = self.motion_attn is not None or self.interaction is not None
@@ -83,7 +87,12 @@ class MAX3D(nn.Module):
 
     def forward(self, clip: torch.Tensor) -> torch.Tensor:
         """clip: [B, 3, T, H, W] in [0, 1] -> logits [B, num_classes]."""
-        return self._run(clip, len(self.blocks) - 1)
+        logits = self._run(clip, len(self.blocks) - 1)
+        if self.apn is not None:  # local branches share the backbone weights
+            for k, crop in enumerate(self.apn(clip)):
+                local = self._run(crop, len(self.blocks) - 1, resize=False)
+                logits = logits + self.apn_weight[k] * local
+        return logits
 
     def features(self, clip: torch.Tensor, stage: str = "res5") -> torch.Tensor:
         """Feature map after `stage` (used for Grad-CAM)."""

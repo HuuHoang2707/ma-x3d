@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch.nn as nn
 
 from ..config import ModelConfig
+from .apn import AttentionCrops
 from .eaa import EfficientAdditiveAttention
 from .interaction import BurstPool, FeatureDiffResidual
 from .interaction_tokens import MotionPeakInteraction
@@ -68,6 +69,11 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     eaa = EfficientAdditiveAttention(STAGE_CHANNELS["res5"]) if cfg.eaa else None
     diff = nn.ModuleDict({str(STAGES[st]): FeatureDiffResidual(STAGE_CHANNELS[st])
                           for st in cfg.diff_residual})
+    apn = None
+    if cfg.apn_crops:
+        apn = AttentionCrops(cfg.apn_crops, cfg.apn_size)
+        pool = blocks[STAGES["head"]].pool  # crops are smaller, so pool adaptively
+        pool.pool = nn.AdaptiveAvgPool3d(1)
     if cfg.zoom not in ("", "motion"):
         raise ValueError(f"zoom must be ''|motion, got {cfg.zoom!r}")
     zoom = MotionZoom() if cfg.zoom == "motion" else None
@@ -79,4 +85,4 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     if cfg.motion_input not in ("frames", "zero"):
         raise ValueError(f"motion_input must be frames|zero, got {cfg.motion_input!r}")
     return MAX3D(blocks, ma, cfg.ma_stage, eaa, cfg.normalize_input, cfg.motion_multiscale,
-                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter, zoom)
+                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter, zoom, apn)

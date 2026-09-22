@@ -1,0 +1,6 @@
+# Attention crops on MA-X3D (our modules kept).
+_base_: ../exp/e11_kd_long.yaml
+name: a2_apn2_maxd
+description: MA-X3D, final recipe, 2 attention crops
+model:
+  apn_crops: 2

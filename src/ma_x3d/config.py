@@ -78,6 +78,10 @@ class ModelConfig:
     diff_residual: list[str] = field(default_factory=list)
     burst_pool: bool = False  # attention pooling over time in the head
     zoom: str = ""  # "motion": crop to the moving region inside the model (no detector)
+    # attention prediction crops (Varghese et al. 2025): local branches fused with the
+    # global one; 0 disables them
+    apn_crops: int = 0
+    apn_size: int = 112
     interaction: bool = False  # motion-peak interaction tokens (logit correction)
     interaction_peaks: int = 6
 
