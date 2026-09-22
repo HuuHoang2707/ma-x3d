@@ -78,24 +78,38 @@ either a confuser or a label error. The zoom experiments now queued test the fix
 | `docs/GUIDE.md` | how to train and evaluate yourself |
 | `paper/drafts/make_tables.py` | regenerates every number in the paper |
 
-## Preprocessing (ROI) study, built from raw RWF-2000
+## Preprocessing study, built from raw RWF-2000
 
-Same recipe, same folds, same seed; only the crop made at preprocessing time changes.
-Decision metric is out-of-fold accuracy over the 1,584 training clips.
+Same recipe, same folds, same seed; only the preprocessing changes. The decision metric
+is out-of-fold accuracy over the 1,584 training clips; the test column is the four-fold
+ensemble scored once.
 
-| variant | what it does | OOF acc | fold-ensemble test | single-model test |
-|---|---|---|---|---|
-| `rp_cluster` | largest DBSCAN cluster of person boxes (the thesis crop) | 89.58 | 88.50 | 87.44 ± 0.99 |
-| `rp_adaptive` | same box, but never below half the frame and never more than 2x zoom | **91.98** | **89.50** | 87.81 ± 2.22 |
-| `rp_none`, `rp_noenh`, `rp_union` | running | | | |
+| variant | crop | contrast | OOF acc | test (ens) | test (single) |
+|---|---|---|---|---|---|
+| `rp_none` | full frame | CLAHE | **92.55** | 89.50 | 89.13 ± 0.52 |
+| `rp_adaptive` | >= half frame, zoom <= 2x | CLAHE | 91.98 | 89.50 | 87.81 ± 2.22 |
+| `rp_noenh` | cluster crop | none | 90.40 | 87.00 | 87.19 ± 1.57 |
+| `rp_cluster` | cluster crop (the thesis pipeline) | CLAHE | 89.58 | 88.50 | 87.44 ± 0.99 |
+| `rp_union` | union of all people | CLAHE | 89.39 | 90.50 | 89.00 ± 1.35 |
+| `rp_plain` | full frame | none | training | | |
+| `rp_aspect` | full frame, 16:9 kept by padding | CLAHE | queued | | |
 
-Adaptive is +2.40 OOF over the thesis crop. This matches the error analysis: the clips
-the model missed held small actors and a tight crop threw away the context that says
-whether people are fighting or dancing, so the fix was to bound the zoom, not to crop
-harder (the earlier hard-zoom experiment cost 1.77).
+What this says:
+
+* Cropping to the people costs 2.97 OOF (92.55 -> 89.58). The gentler adaptive crop wins
+  most of that back but still does not beat leaving the frame alone. The error analysis
+  pointed the same way: the missed clips had small actors, and the fix was to stop
+  throwing the context away, not to zoom harder.
+* CLAHE costs 0.82 on its own (89.58 -> 90.40 once it is removed, same crop), so
+  `rp_plain` tests both together.
+* `rp_union` is the reason we select on OOF: it has the best test number of the five
+  (90.50) and the second worst OOF. On 400 test clips one clip is 0.25 points, and
+  picking by test would have chosen the weaker preprocessing.
+* The raw videos are 1280x720. Every variant so far squashes 16:9 into a square, which
+  makes people 1.78x too narrow relative to the Kinetics pretraining; `rp_aspect` keeps
+  the ratio and pads instead.
 
 For reference, the same recipe on the user's own HDF5 crop gives 90.46 OOF, so the
-mirror's videos are equivalent to within about a point and the adaptive gain is real
-rather than a difference in source data.
+downloaded videos agree with the thesis data to within a point.
 
 _updated 2026-09-22_

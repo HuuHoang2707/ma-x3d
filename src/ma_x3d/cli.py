@@ -69,7 +69,8 @@ def cmd_boxes(a):
 def cmd_build_rwf(a):
     from .data.preprocess import build_rwf
 
-    build_rwf(a.videos, a.out, a.roi, a.workers, size=a.size, enhance_frames=not a.no_enhance)
+    build_rwf(a.videos, a.out, a.roi, a.workers, size=a.size,
+              enhance_frames=not a.no_enhance, keep_aspect=a.keep_aspect)
 
 
 def cmd_profiles(a):
@@ -356,6 +357,8 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--size", type=int, default=224)
     s.add_argument("--workers", type=int, default=12)
     s.add_argument("--no-enhance", action="store_true", help="skip the bilateral filter + CLAHE")
+    s.add_argument("--keep-aspect", action="store_true",
+                   help="pad instead of stretching 16:9 frames into a square")
     s.set_defaults(fn=cmd_build_rwf)
 
     s = sub.add_parser("profiles", help="motion energy per stored frame (motion sampling)")

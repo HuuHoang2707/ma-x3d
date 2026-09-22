@@ -16,9 +16,11 @@ pick_gpus () {  # how many
   done
 }
 
-echo "waiting for the five preprocessing variants $(date +%H:%M)"
-while [ "$(ls runs/rp_*/seed0/fold*/results.json 2>/dev/null | wc -l)" -lt 24 ]; do sleep 240; done
+echo "waiting for the preprocessing variants $(date +%H:%M)"
+# the variant queue writes this once every variant has all four folds
+while [ ! -f runs/variants_done.flag ]; do sleep 240; done
 for d in runs/rp_*/seed0; do
+  [ "$(ls "$d"/fold*/results.json 2>/dev/null | wc -l)" -eq 4 ] || continue  # only complete variants
   [ -f "$d/cv_eval.json" ] || HIP_VISIBLE_DEVICES=$(pick_gpus 1) $P -m ma_x3d.cli cv "$d" --variants 1clip \
     > /dev/null 2>&1
 done

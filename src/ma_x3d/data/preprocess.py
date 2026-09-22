@@ -194,7 +194,8 @@ def _clip_array(args) -> np.ndarray | None:
 
 def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
                       roi: str = "cluster", workers: int = 16, n: int = 64, size: int = 224,
-                      window_s: float | None = 5.0, enhance_frames: bool = True) -> None:
+                      window_s: float | None = 5.0, enhance_frames: bool = True,
+              keep_aspect: bool = False) -> None:
     """Videos in {label: folder} -> out_dir/all_x.npy [N, n, 3, size, size], all_y.npy,
     names.txt, bad.npy (videos that could not be read). Same processing as build_split,
     run in parallel on CPU."""
@@ -225,13 +226,29 @@ def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
 
 
 
+def fit_square(frame, size: int, keep_aspect: bool):
+    """Resize to size x size. Stretching a 16:9 frame into a square makes people 1.78x
+    too narrow, so `keep_aspect` scales the long side and pads the rest instead."""
+    import cv2
+
+    if not keep_aspect:
+        return cv2.resize(frame, (size, size))
+    h, w = frame.shape[:2]
+    scale = size / max(h, w)
+    small = cv2.resize(frame, (max(1, round(w * scale)), max(1, round(h * scale))))
+    out = np.zeros((size, size, 3), frame.dtype)
+    y, x = (size - small.shape[0]) // 2, (size - small.shape[1]) // 2
+    out[y:y + small.shape[0], x:x + small.shape[1]] = small
+    return out
+
+
 def _rwf_clip(args) -> tuple[int, np.ndarray | None]:
     """One video of the official RWF-2000 layout -> [n, 3, size, size] uint8."""
     import cv2
     import torch
 
     global _DETECTOR
-    index, path, roi, n, size, window_s, enhance_frames = args
+    index, path, roi, n, size, window_s, enhance_frames, keep_aspect = args
     torch.set_num_threads(2)
     cv2.setNumThreads(1)
     if _DETECTOR is None and roi != "none":
@@ -249,13 +266,14 @@ def _rwf_clip(args) -> tuple[int, np.ndarray | None]:
         crop = f if crop.size == 0 else crop
         if clahe is not None:
             crop = enhance(crop, clahe)
-        out.append(cv2.resize(crop, (size, size)).transpose(2, 0, 1))
+        out.append(fit_square(crop, size, keep_aspect).transpose(2, 0, 1))
     return index, np.stack(out)
 
 
 def build_rwf(videos_root: str | Path, out_dir: str | Path, roi: str = "cluster",
               workers: int = 12, n: int = 64, size: int = 224,
-              window_s: float | None = 5.0, enhance_frames: bool = True) -> None:
+              window_s: float | None = 5.0, enhance_frames: bool = True,
+              keep_aspect: bool = False) -> None:
     """Official RWF-2000 layout (train|val / Fight|NonFight) -> train/test npy arrays.
 
     One array per split, Fight clips first, which is the order the audit and the folds
@@ -279,7 +297,8 @@ def build_rwf(videos_root: str | Path, out_dir: str | Path, roi: str = "cluster"
                     labels.append(label)
         x = np.lib.format.open_memmap(out_dir / f"{split}_x.npy", mode="w+", dtype=np.uint8,
                                       shape=(len(videos), n, 3, size, size))
-        jobs = [(i, v, roi, n, size, window_s, enhance_frames) for i, v in enumerate(videos)]
+        jobs = [(i, v, roi, n, size, window_s, enhance_frames, keep_aspect)
+                for i, v in enumerate(videos)]
         bad = []
         with get_context("spawn").Pool(workers) as pool:
             for i, arr in tqdm(pool.imap_unordered(_rwf_clip, jobs, chunksize=2),
