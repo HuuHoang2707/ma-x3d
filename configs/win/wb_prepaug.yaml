@@ -1,0 +1,12 @@
+# Instead of choosing one preprocessing, train on all of them: each sample is read from
+# a random variant of the same clip. Models trained on different preprocessings make
+# different mistakes (their ensemble reaches 94.07 OOF against 92.80 for the best single
+# model), and this puts that diversity into one model at no inference cost.
+_base_: ../prep/rp_none.yaml
+name: wb_prepaug
+description: preprocessing-mixture augmentation, X3D-M
+model:
+  motion_attention: false
+  wide_kernel: none
+data:
+  alt_roots: [dataset/rwf_aspect, dataset/rwf_adaptive, dataset/rwf_cluster]

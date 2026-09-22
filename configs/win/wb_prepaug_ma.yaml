@@ -1,0 +1,7 @@
+# The same mixture with the MA-X3D modules, so the two are measured on equal footing.
+_base_: wb_prepaug.yaml
+name: wb_prepaug_ma
+description: preprocessing-mixture augmentation, MA-X3D
+model:
+  motion_attention: true
+  wide_kernel: reparam

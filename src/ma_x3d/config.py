@@ -41,6 +41,8 @@ class DataConfig:
     roi_zoom: str = ""
     # extra dataset roots whose training clips are added to the training set (their
     # test clips are never used); evaluation stays on `root`
+    # other preprocessings of the same clips, sampled as augmentation
+    alt_roots: list[str] = field(default_factory=list)
     extra_roots: list[str] = field(default_factory=list)
     # uniform | motion: which stored frames a clip uses (motion needs `ma-x3d profiles`)
     sampling: str = "uniform"

@@ -39,8 +39,13 @@ class ClipDataset(Dataset):
         span_frac: tuple[float, float] | None = None,
         boxes: np.ndarray | None = None,
         profiles: np.ndarray | None = None,
+        alt_paths: list[str] | None = None,
     ):
         self.x_path = str(x_path)
+        # other preprocessings of the same clips; training picks one per sample, which
+        # gives a single model the diversity that an ensemble over preprocessings has
+        self.alt_paths = [str(a) for a in (alt_paths or [])]
+        self._alt = None
         self.labels = labels
         self.indices = np.asarray(indices)
         self.frames = frames
@@ -61,9 +66,19 @@ class ClipDataset(Dataset):
             self._x = np.load(self.x_path, mmap_mode="r")
         return self._x
 
+    def _source(self) -> np.ndarray:
+        """The array this sample is read from: a random preprocessing while training."""
+        if not self.alt_paths or not self.training:
+            return self.x
+        if self._alt is None:
+            self._alt = [np.load(a, mmap_mode="r") for a in self.alt_paths]
+        pick = random.randrange(len(self._alt) + 1)
+        return self.x if pick == 0 else self._alt[pick - 1]
+
     def __getitem__(self, i: int):
         idx = int(self.indices[i % len(self.indices)])
-        stored = self.x.shape[1]
+        src = self._source()
+        stored = src.shape[1]
         if self.profiles is not None:  # frames where the clip moves most
             t = motion_indices(self.profiles[idx], self.frames,
                                random if self.training else None)
@@ -71,7 +86,7 @@ class ClipDataset(Dataset):
             t = random_indices(stored, self.frames, random, span_frac=self.span_frac)
         else:
             t = uniform_indices(stored, self.frames)
-        clip = torch.from_numpy(np.ascontiguousarray(self.x[idx, t]))  # [T, C, H, W] uint8
+        clip = torch.from_numpy(np.ascontiguousarray(src[idx, t]))  # [T, C, H, W] uint8
         clip = clip.permute(1, 0, 2, 3).float().div_(255.0)  # [C, T, H, W] in [0, 1]
         if self.boxes is not None:  # one static box per clip: actors at a common scale
             x1, y1, x2, y2 = self.boxes[idx]
@@ -158,7 +173,8 @@ def build_datasets(cfg: Config) -> dict[str, ClipDataset | None]:
     aug = ClipAugment(d.rotation_deg, d.temporal_inverse) if d.augment else None
     out = {
         "train": ClipDataset(xtr, ytr, split["train"], d.frames, True, aug, d.augment_multiplier,
-                             d.train_span, boxes.get("train"), profiles.get("train")),
+                             d.train_span, boxes.get("train"), profiles.get("train"),
+                             [str(array_paths(a, "train")[0]) for a in d.alt_roots]),
         "test": ClipDataset(xte, yte, split["test"], d.frames, False,
                             boxes=boxes.get("test"), profiles=profiles.get("test")),
         "val": None,
