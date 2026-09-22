@@ -5,10 +5,20 @@ set -u
 cd /remote/vast0/hoangnguyenhuu/ma-x3d
 P=.venv/bin/python
 
+# Other users share these nodes, so pick GPUs that are actually idle rather than 0-3.
+pick_gpus () {  # how many
+  while true; do
+    g=$($P -m ma_x3d.cli gpus 2>/dev/null | awk 'NR>1 && $5<=5 && $7<=10 {print $1}' \
+        | head -"$1" | paste -sd,)
+    [ "$(echo "$g" | tr ',' '\n' | grep -c .)" -eq "$1" ] && { echo "$g"; return; }
+    sleep 300
+  done
+}
+
 echo "waiting for the five preprocessing variants $(date +%H:%M)"
 while [ "$(ls runs/rp_*/seed0/fold*/results.json 2>/dev/null | wc -l)" -lt 20 ]; do sleep 240; done
 for d in runs/rp_*/seed0; do
-  [ -f "$d/cv_eval.json" ] || HIP_VISIBLE_DEVICES=0 $P -m ma_x3d.cli cv "$d" --variants 1clip \
+  [ -f "$d/cv_eval.json" ] || HIP_VISIBLE_DEVICES=$(pick_gpus 1) $P -m ma_x3d.cli cv "$d" --variants 1clip \
     > /dev/null 2>&1
 done
 
@@ -62,7 +72,7 @@ train:
   probe_epochs: 2
 CFG
 mkdir -p runs/logs
-HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+HIP_VISIBLE_DEVICES=$(pick_gpus 4) .venv/bin/torchrun --standalone --nproc_per_node=4 \
   --master_port=29677 -m ma_x3d.cli train configs/final/f4_best.yaml --seed 0 \
   > runs/logs/f4_best_ddp.log 2>&1
 echo "final model trained $(date +%H:%M)"
@@ -95,7 +105,7 @@ train:
   epochs: 48
   patience: 16
 CFG
-HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+HIP_VISIBLE_DEVICES=$(pick_gpus 4) .venv/bin/torchrun --standalone --nproc_per_node=4 \
   --master_port=29678 -m ma_x3d.cli train configs/final/t02_full_joint.yaml --seed 0 \
   > runs/logs/t02_full_joint_ddp.log 2>&1
 if [ ! -f "runs/t02_full_joint_$W/seed0/results.json" ]; then
@@ -104,7 +114,7 @@ if [ ! -f "runs/t02_full_joint_$W/seed0/results.json" ]; then
   exit 1
 fi
 echo "teacher trained $(date +%H:%M)"
-HIP_VISIBLE_DEVICES=0,1,2,3 .venv/bin/torchrun --standalone --nproc_per_node=4 \
+HIP_VISIBLE_DEVICES=$(pick_gpus 4) .venv/bin/torchrun --standalone --nproc_per_node=4 \
   --master_port=29679 -m ma_x3d.cli train configs/final/f5_best_kd.yaml --seed 0 \
   > runs/logs/f5_best_kd_ddp.log 2>&1
 echo "final KD model trained $(date +%H:%M)"

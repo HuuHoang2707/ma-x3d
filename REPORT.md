@@ -77,3 +77,25 @@ either a confuser or a label error. The zoom experiments now queued test the fix
 | `paper/figures/*.pdf` | the three data figures |
 | `docs/GUIDE.md` | how to train and evaluate yourself |
 | `paper/drafts/make_tables.py` | regenerates every number in the paper |
+
+## Preprocessing (ROI) study, built from raw RWF-2000
+
+Same recipe, same folds, same seed; only the crop made at preprocessing time changes.
+Decision metric is out-of-fold accuracy over the 1,584 training clips.
+
+| variant | what it does | OOF acc | fold-ensemble test | single-model test |
+|---|---|---|---|---|
+| `rp_cluster` | largest DBSCAN cluster of person boxes (the thesis crop) | 89.58 | 88.50 | 87.44 ± 0.99 |
+| `rp_adaptive` | same box, but never below half the frame and never more than 2x zoom | **91.98** | **89.50** | 87.81 ± 2.22 |
+| `rp_none`, `rp_noenh`, `rp_union` | running | | | |
+
+Adaptive is +2.40 OOF over the thesis crop. This matches the error analysis: the clips
+the model missed held small actors and a tight crop threw away the context that says
+whether people are fighting or dancing, so the fix was to bound the zoom, not to crop
+harder (the earlier hard-zoom experiment cost 1.77).
+
+For reference, the same recipe on the user's own HDF5 crop gives 90.46 OOF, so the
+mirror's videos are equivalent to within about a point and the adaptive gain is real
+rather than a difference in source data.
+
+_updated 2026-09-22_
