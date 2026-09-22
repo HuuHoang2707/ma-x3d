@@ -170,7 +170,7 @@ def _clip_array(args) -> np.ndarray | None:
     import torch
 
     global _DETECTOR
-    path, roi, n, size, window_s = args
+    path, roi, n, size, window_s, enhance_frames = args
     torch.set_num_threads(2)  # NMS has a time limit; one thread can hit it under load
     cv2.setNumThreads(1)
     if _DETECTOR is None:
@@ -181,18 +181,20 @@ def _clip_array(args) -> np.ndarray | None:
     if frames is None:
         return None
     x1, y1, x2, y2 = person_roi(frames, _DETECTOR, mode=roi)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) if enhance_frames else None
     out = []
     for f in frames:
         crop = f[y1:y2, x1:x2]
         crop = f if crop.size == 0 else crop
-        out.append(cv2.resize(enhance(crop, clahe), (size, size)).transpose(2, 0, 1))
+        if clahe is not None:
+            crop = enhance(crop, clahe)
+        out.append(cv2.resize(crop, (size, size)).transpose(2, 0, 1))
     return np.stack(out)
 
 
 def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
                       roi: str = "cluster", workers: int = 16, n: int = 64, size: int = 224,
-                      window_s: float | None = 5.0) -> None:
+                      window_s: float | None = 5.0, enhance_frames: bool = True) -> None:
     """Videos in {label: folder} -> out_dir/all_x.npy [N, n, 3, size, size], all_y.npy,
     names.txt, bad.npy (videos that could not be read). Same processing as build_split,
     run in parallel on CPU."""
@@ -208,7 +210,7 @@ def build_clip_arrays(class_dirs: dict[int, str | Path], out_dir: str | Path,
     x = np.lib.format.open_memmap(out_dir / "all_x.npy", mode="w+", dtype=np.uint8,
                                   shape=(len(videos), n, 3, size, size))
     bad = np.zeros(len(videos), dtype=bool)
-    jobs = [(p, roi, n, size, window_s) for p, _ in videos]
+    jobs = [(p, roi, n, size, window_s, enhance_frames) for p, _ in videos]
     with get_context("spawn").Pool(workers) as pool:
         for i, arr in enumerate(tqdm(pool.imap(_clip_array, jobs, chunksize=2),
                                      total=len(jobs), desc="clips")):
