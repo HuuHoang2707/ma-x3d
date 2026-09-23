@@ -109,20 +109,55 @@ and is significant; CLAHE and the aspect ratio make no measurable difference onc
 frame is left alone. `rp_union` also shows why the decision is made on OOF: it has the
 best test score of the seven and the second worst OOF.
 
-## What the modules are worth on that preprocessing
+## What the model changes are worth on that preprocessing
 
-The thesis ablation was measured on the cropped data. Re-measured on the data we now ship
-(`rp_none`, same folds, seed 0):
+All 4-fold, seed 0, same folds, same recipe, on `rwf_none`. OOF decides; test is the
+fold ensemble scored once. `p` is exact McNemar against X3D-M.
 
-| model | params | OOF | test (ens) | vs X3D-M |
-|---|---|---|---|---|
-| X3D-M (no modules) | 2.98 M | 92.80 | 89.50 | - |
-| MA-X3D (motion attention + wide kernels) | 3.03 M | 92.55 | 89.50 | -0.25, p = 0.72 |
-| MA-X3D + difference residual | 3.05 M | 92.68 | 89.00 | -0.13, p = 0.91 |
+| model | params | OOF | test (ens) | test (single) | test diff | p |
+|---|---|---|---|---|---|---|
+| X3D-M (control) | 2.98 M | **92.80** | 89.50 | 88.37 ± 1.53 | - | - |
+| + 5x5 kernels in all four stages | 3.44 M | 92.99 | **93.00** | 91.25 ± 1.06 | **+3.50** | **0.0043** |
+| 32 frames instead of 16 | 3.03 M | 92.55 | 92.25 | 90.56 ± 0.37 | +2.75 | 0.061 |
+| + preprocessing mixture + MA | 3.03 M | 92.49 | 90.75 | 89.88 ± 0.87 | +1.25 | - |
+| + wide kernels, Res2-3 (thesis) | 3.03 M | 92.49 | 90.25 | 89.44 ± 0.87 | +0.75 | 0.58 |
+| + difference residual | 3.05 M | 92.68 | 89.00 | 89.38 ± 1.35 | -0.50 | - |
+| + MA + WK (MA-X3D) | 3.03 M | 92.55 | 89.50 | 89.13 ± 0.52 | 0.00 | 1.00 |
+| + preprocessing mixture | 2.98 M | 91.98 | 89.00 | 89.12 ± 1.14 | -0.50 | 0.73 |
+| + MA only | 2.98 M | 92.61 | 88.00 | 88.06 ± 0.76 | -1.50 | 0.11 |
 
-Once the preprocessing is fixed, the modules neither help nor hurt: every difference is
-well inside the confidence interval. The honest statement for the paper is that the gain
-the thesis attributed to the modules came from the protocol and the preprocessing.
+Two of these disagree between OOF and test, which is the interesting part:
+
+* **Wide kernels in all four stages**: +3.50 on test (p = 0.0043, the best number this
+  project has produced) but +0.19 OOF (p = 0.83). OOF has 1,584 clips against the test
+  split's 400, so the disagreement is not a power problem. Either the test videos happen
+  to suit wide receptive fields, or wide kernels generalise to RWF's separate test videos
+  better than to held-out training clips. One seed cannot tell those apart, and this
+  project has already watched a "+1.25, p = 0.006" turn into -0.04 across three seeds,
+  so seeds 1 and 2 are running for this row, the 32-frame row and the control.
+* **32 frames** shows the same shape (+2.75 test, p = 0.061, OOF flat) with the lowest
+  spread of any run (± 0.37), which is what "more information in" should look like.
+
+Negative results worth keeping:
+
+* **Preprocessing-mixture augmentation** (each training clip read from a random
+  preprocessing variant) costs 0.82 OOF. An ensemble over preprocessings reaches 94.07
+  OOF against 92.80 for the best single model, but sampling the variants during training
+  does not transfer that: the model averages the preprocessings instead of learning from
+  their disagreement.
+* **Motion attention alone is the worst row in the table** (-1.50 on test), and the
+  control that removes its motion input entirely scores higher (91.09 vs 90.65 on the
+  cropped data), so the gate is not working through the motion signal it is built on.
+
+## Final models, full training split, test scored once
+
+| run | test | F1 | AUC |
+|---|---|---|---|
+| no crop + joint (RWF + Hockey + RLVS) + difference residual | **91.25** | 0.912 | 0.973 |
+| the same, distilled from the joint VideoMAE-B teacher | 90.75 | 0.908 | 0.967 |
+| VideoMAE-B teacher, 87 M params, for reference | 94.00 | 0.942 | 0.978 |
+
+Distillation helped on the cropped data (+0.57) and does not here (-0.50).
 
 ## Test-time augmentation (no retraining, `rp_none` models)
 
