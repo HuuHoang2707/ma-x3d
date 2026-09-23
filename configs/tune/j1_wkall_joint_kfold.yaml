@@ -1,0 +1,11 @@
+# Joint training inside the k-fold protocol, so the fold models can be souped into the
+# deployed model: the models trained for an honest estimate become the model we ship.
+_base_: ../win/wa_wk_all.yaml
+name: j1_wkall_joint_kfold
+description: all-stage wide kernels, joint RWF + Hockey + RLVS, 4 folds for the soup
+data:
+  extra_roots: [dataset/hockey_none, dataset/rlvs_none]
+train:
+  epochs: 20
+  probe_epochs: 2
+  patience: 8
