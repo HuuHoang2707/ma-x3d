@@ -170,3 +170,18 @@ Distillation helped on the cropped data (+0.57) and does not here (-0.50).
 
 
 _updated 2026-09-23_
+
+## Cost of the candidates (fvcore, one 224x224 view)
+
+| model | params | fused params | GFLOPs | vs X3D-M |
+|---|---|---|---|---|
+| X3D-M | 2.979 M | 2.979 M | 4.73 | - |
+| + 5x5 in Res2-Res5 | 3.436 M | 3.272 M | 5.92 | +25% |
+| + MA + wide kernels (MA-X3D) | 3.034 M | 3.015 M | 5.46 | +15% |
+| + 5x5 in Res2-Res3 | 3.031 M | 3.012 M | 5.45 | +15% |
+| + motion attention only | 2.981 M | 2.981 M | 4.75 | +0.4% |
+| 32 frames (same network) | 3.034 M | 3.015 M | 10.94 | +131% |
+
+The 32-frame variant buys its test gain with 2.3x the computation, which does not suit
+the efficiency argument; the all-stage wide kernel costs 25% more and stays under
+6 GFLOPs.
