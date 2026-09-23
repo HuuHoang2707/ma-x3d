@@ -146,3 +146,19 @@ def test_motion_peak_interaction():
     energy[0, 3, 3], energy[0, 10, 10] = 1.0, 0.9
     picks = [(int(i) // 14, int(i) % 14) for i in m._select(energy)[0]]
     assert picks[0] == (3, 3) and picks[1] == (10, 10)  # peaks, spread apart
+
+
+def test_temporal_wide_kernel_is_identity_and_fuses():
+    """Widening in time must also start as the pre-trained kernel and fuse exactly."""
+    import torch
+    import torch.nn as nn
+
+    from ma_x3d.models.wide_kernel import WideKernelConv
+
+    conv = nn.Conv3d(4, 4, (3, 3, 3), padding=(1, 1, 1), groups=4)
+    x = torch.randn(2, 4, 8, 12, 12)
+    for size, t_size in [(3, 5), (5, 5), (7, 3)]:
+        wide = WideKernelConv(conv, size, t_size)
+        assert wide.kernel_size == (t_size, size, size)
+        assert torch.allclose(wide(x), conv(x), atol=1e-6)   # identity at init
+        assert torch.allclose(wide.fuse()(x), wide(x), atol=1e-6)

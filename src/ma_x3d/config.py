@@ -75,6 +75,7 @@ class ModelConfig:
     wide_kernel: str = "reparam"  # none | reparam | dense
     wk_stages: list[str] = field(default_factory=lambda: ["res2", "res3"])
     wk_size: int = 5
+    wk_tsize: int = 3   # temporal kernel; 5 widens in time as well as in space
     eaa: bool = False  # efficient additive attention after Res5 (notebook v5 experiment)
     # stages whose output gets a zero-initialised temporal-difference residual
     diff_residual: list[str] = field(default_factory=list)

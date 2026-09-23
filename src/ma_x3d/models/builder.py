@@ -61,7 +61,8 @@ def build_model(cfg: ModelConfig) -> nn.Module:
         if cfg.wide_kernel not in ("reparam", "dense"):
             raise ValueError(f"wide_kernel must be none|reparam|dense, got {cfg.wide_kernel!r}")
         for stage in cfg.wk_stages:
-            widen_stage(blocks[STAGES[stage]], cfg.wide_kernel, cfg.wk_size)
+            widen_stage(blocks[STAGES[stage]], cfg.wide_kernel, cfg.wk_size,
+                        cfg.wk_tsize)
     ma = None
     if cfg.motion_attention:
         ma = MotionAttention(STAGE_CHANNELS[cfg.ma_stage], cfg.ma_modes, cfg.ma_temporal_kernel,

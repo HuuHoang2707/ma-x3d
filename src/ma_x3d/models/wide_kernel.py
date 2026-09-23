@@ -1,4 +1,4 @@
-"""Widen depthwise 3x3 spatial kernels to 5x5 in chosen X3D stages.
+"""Widen the depthwise kernels of chosen X3D stages, in space and/or in time.
 
 Two variants:
   reparam: W = pad(W_base) + ring_mask * W_delta. W_base is the pre-trained 3x3
@@ -19,28 +19,34 @@ import torch.nn.functional as F
 
 
 class WideKernelConv(nn.Module):
-    def __init__(self, conv: nn.Conv3d, size: int = 5):
+    def __init__(self, conv: nn.Conv3d, size: int = 5, t_size: int | None = None):
         super().__init__()
         out_c, in_c, kt, kh, kw = conv.weight.shape
-        assert kh == kw and size > kh and (size - kh) % 2 == 0
+        t_size = kt if t_size is None else t_size
+        assert kh == kw and size >= kh and (size - kh) % 2 == 0
+        assert t_size >= kt and (t_size - kt) % 2 == 0 and (size > kh or t_size > kt)
         self.off = (size - kh) // 2
-        self.kernel_size = (kt, size, size)
+        self.off_t = (t_size - kt) // 2
+        self.kernel_size = (t_size, size, size)
         self.in_channels, self.out_channels = conv.in_channels, conv.out_channels
         self.stride, self.dilation, self.groups = conv.stride, conv.dilation, conv.groups
-        self.padding = (conv.padding[0], conv.padding[1] + self.off, conv.padding[2] + self.off)
+        self.padding = (conv.padding[0] + self.off_t, conv.padding[1] + self.off,
+                        conv.padding[2] + self.off)
 
         self.base_weight = nn.Parameter(conv.weight.detach().clone())
         self.bias = nn.Parameter(conv.bias.detach().clone()) if conv.bias is not None else None
-        self.delta_weight = nn.Parameter(torch.zeros(out_c, in_c, kt, size, size))
-        ring = torch.ones(1, 1, 1, size, size)
-        ring[..., self.off : self.off + kh, self.off : self.off + kw] = 0.0
+        self.delta_weight = nn.Parameter(torch.zeros(out_c, in_c, t_size, size, size))
+        ring = torch.ones(1, 1, t_size, size, size)   # everything outside the old kernel
+        ring[:, :, self.off_t : self.off_t + kt,
+             self.off : self.off + kh, self.off : self.off + kw] = 0.0
         self.register_buffer("ring_mask", ring)
         self.fast = False  # set by ops.depthwise3d.use_fast_depthwise
 
     @property
     def weight(self) -> torch.Tensor:
-        o = self.off
-        return F.pad(self.base_weight, (o, o, o, o)) + self.delta_weight * self.ring_mask
+        o, ot = self.off, self.off_t
+        return (F.pad(self.base_weight, (o, o, o, o, ot, ot))
+                + self.delta_weight * self.ring_mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.fast:
@@ -81,11 +87,13 @@ def depthwise_convs(stage: nn.Module):
         yield rb, rb.branch2.conv_b
 
 
-def widen_stage(stage: nn.Module, mode: str, size: int = 5) -> int:
+def widen_stage(stage: nn.Module, mode: str, size: int = 5, t_size: int | None = None) -> int:
     n = 0
     for rb, conv in depthwise_convs(stage):
-        if isinstance(conv, nn.Conv3d) and conv.kernel_size[1] < size:
-            wide = WideKernelConv(conv, size) if mode == "reparam" else inflate_dense(conv, size)
+        wider = conv.kernel_size[1] < size or (t_size or 0) > conv.kernel_size[0]
+        if isinstance(conv, nn.Conv3d) and wider:
+            wide = (WideKernelConv(conv, size, t_size) if mode == "reparam"
+                    else inflate_dense(conv, size))
             rb.branch2.conv_b = wide
             n += 1
     return n

@@ -1,0 +1,10 @@
+# Kernel study on the uncropped pipeline: 5x5 in the late stages only
+_base_: ../prep/rp_none.yaml
+name: wk_late
+description: 5x5 in the late stages only
+model:
+  motion_attention: false
+  wide_kernel: reparam
+  wk_stages: [res4, res5]
+  wk_size: 5
+  wk_tsize: 3

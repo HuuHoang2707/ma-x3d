@@ -1,0 +1,10 @@
+# Kernel study on the uncropped pipeline: wider in space and time (5x5x5)
+_base_: ../prep/rp_none.yaml
+name: wk_st
+description: wider in space and time (5x5x5)
+model:
+  motion_attention: false
+  wide_kernel: reparam
+  wk_stages: [res2, res3, res4, res5]
+  wk_size: 5
+  wk_tsize: 5
