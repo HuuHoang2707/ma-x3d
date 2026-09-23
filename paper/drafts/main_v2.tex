@@ -124,6 +124,16 @@ RWF-2000 ($[+0.04, +1.71]$, three seeds); under a tuned recipe they add
 $-0.04$ points ($p=0.78$), and the same holds on Hockey Fights
 ($-0.04$), on RLVS ($-0.19$) and with a quarter of the training clips
 ($0.00$). The recipe itself adds 2.80 points to X3D-M and 1.87 to MA-X3D.
+
+One step outside the network turns out to matter more than anything
+inside it. The pipeline this line of work inherits detects people in each
+clip and crops towards them before resizing. Rebuilding RWF-2000 from the
+raw videos seven times, one preprocessing step at a time, shows that this
+crop costs 2.97 out-of-fold points ($[+1.45, +4.48]$, $p=0.0002$):
+decoding the video and resizing it, with no detector at all, is both more
+accurate and cheaper. Contrast equalisation and the aspect ratio make no
+measurable difference. Measured again on that pipeline, the modules stay
+where they were.
 Controls explain part of the picture: a gate that keeps its parameters but receives
 an all-zero motion map performs as well as the full module, and a dense
 $5\times5$ kernel performs as well as the reparameterised one. Two effects
@@ -690,6 +700,109 @@ numbers indicate where to look next, not what to conclude.
     \bottomrule
   \end{tabular}
 \end{table}
+
+\subsection{The input pipeline}
+\label{sec:pipeline}
+
+Every result above uses the pipeline of the original work: a person
+detector on twelve sampled frames, a crop around the largest cluster of
+person boxes with a 20\% margin, contrast equalisation, and a resize to
+$224\times224$. That pipeline is a design choice like any other, and it has
+never been measured. We rebuilt RWF-2000 from the raw videos seven times,
+changing one step at a time, and trained the same network with the same
+recipe on the same folds each time (Table~\ref{tab:pipeline}).
+
+Removing the crop is worth $+2.97$ out-of-fold points
+($[+1.45, +4.48]$, $p=0.0002$): more than the modules, the recipe and
+distillation combined, and in the opposite direction to what the crop is
+meant to achieve. The gentler crop that keeps at least half the frame
+recovers most of the loss ($+2.40$) but does not beat leaving the frame
+alone, and the union crop used by recent work~\cite{cuenet} is the worst
+of the seven. Contrast equalisation ($-0.13$, $p=0.90$) and keeping the
+16:9 aspect ratio instead of stretching it ($-0.19$, $p=0.84$) make no
+measurable difference once the frame is left intact. The pipeline that
+wins is also the cheapest: no detector, no equalisation, decode and
+resize.
+
+This is consistent with the errors the network makes. Running the same
+detector over the test clips, the ones the network misclassifies hold
+actors that occupy 4.0\% of the frame against 7.5\% for the ones it gets
+right, and no person is found at all in 49\% of them. Cropping towards the actors
+removes the context that separates a fight from a crowd, and on the clips
+where the detector fails it crops towards nothing.
+
+\begin{table}[t]
+  \centering
+  \caption{RWF-2000 rebuilt from the raw videos, one preprocessing step at
+  a time. X3D-M with motion attention and wide kernels, identical folds,
+  seed 0. $\Delta$ and $p$ are against the pipeline of the original work
+  (row~6), exact McNemar on the out-of-fold predictions.}
+  \label{tab:pipeline}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{llccrc}
+    \toprule
+    Crop & Contrast & OOF & Test & $\Delta$ OOF & $p$ \\
+    \midrule
+    none            & CLAHE & \textbf{92.55} & 89.50 & $+2.97$ & 0.0002 \\
+    none            & --    & 92.42 & 89.75 & $+2.84$ & 0.0003 \\
+    none, 16:9 kept & CLAHE & 92.36 & 88.75 & $+2.78$ & 0.0008 \\
+    $\geq$ half frame & CLAHE & 91.98 & 89.50 & $+2.40$ & 0.0007 \\
+    person cluster  & --    & 90.40 & 87.00 & $+0.82$ & 0.29 \\
+    person cluster  & CLAHE & 89.58 & 88.50 & --      & --   \\
+    union of people & CLAHE & 89.39 & 90.50 & $-0.19$ & 0.85 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The union row also shows why the decision has to be made out of fold. It
+has the best test accuracy of the seven pipelines and the second worst
+out-of-fold accuracy; a study that picked its preprocessing on the test
+split would have chosen it, and would have lost three points.
+
+\subsection{The modules on the pipeline that wins}
+\label{sec:modules-clean}
+
+The comparison of Section~\ref{sec:modules} was made on the cropped data.
+Table~\ref{tab:modules-clean} repeats it on the uncropped pipeline, where
+the backbone is 3 points stronger to begin with. Motion attention is the
+weakest row of the table, the difference residual and the combined model
+are indistinguishable from the plain backbone, and the ranking of the
+modules by out-of-fold accuracy is within noise from end to end. The gain
+of 0.88 points that the modules showed under conventional training on the
+cropped data does not survive either change.
+
+\begin{table}[t]
+  \centering
+  \caption{RWF-2000, uncropped pipeline, identical folds, seed 0. $\Delta$
+  is test accuracy of the fold ensemble against X3D-M, $p$ is exact
+  McNemar on the test split.}
+  \label{tab:modules-clean}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{lcccrc}
+    \toprule
+    Model & Params & OOF & Test & $\Delta$ & $p$ \\
+    \midrule
+    X3D-M                       & 2.98M & \textbf{92.80} & 89.50 & --      & --     \\
+    \;+ $5\times5$ in Res2--Res5 & 3.44M & 92.99 & \textbf{93.00} & $+3.50$ & 0.0043 \\
+    \;+ 32 frames               & 3.03M & 92.55 & 92.25 & $+2.75$ & 0.061  \\
+    \;+ $5\times5$ in Res2--Res3 & 3.03M & 92.49 & 90.25 & $+0.75$ & 0.58   \\
+    \;+ difference residual     & 3.05M & 92.68 & 89.00 & $-0.50$ & 0.77   \\
+    \;+ MA + wide kernels       & 3.03M & 92.55 & 89.50 & $0.00$  & 1.00   \\
+    \;+ motion attention        & 2.98M & 92.61 & 88.00 & $-1.50$ & 0.11   \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two rows of Table~\ref{tab:modules-clean} disagree with themselves.
+Enlarging the kernels of all four stages, and sampling 32 frames instead
+of 16, both leave out-of-fold accuracy unchanged while gaining 2.8 to 3.5
+points on the test split. The out-of-fold estimate rests on 1,584 clips
+and the test split on 400, so this is not a question of statistical power:
+the two splits are ranking the models differently. Both changes widen what
+the network sees, in space or in time, which is the same direction as the
+pipeline result, and the test split of RWF-2000 is drawn from different
+source videos than the training split. We report both numbers rather than
+choosing the flattering one.
 
 \subsection{What the training recipe contributes}
 
