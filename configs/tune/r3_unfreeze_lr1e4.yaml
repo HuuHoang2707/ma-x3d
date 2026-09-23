@@ -1,0 +1,5 @@
+_base_: r1_unfreeze_all.yaml
+name: r3_unfreeze_lr1e4
+description: every stage fine-tuned at backbone lr 1e-4
+train:
+  lr_backbone: 1.0e-4

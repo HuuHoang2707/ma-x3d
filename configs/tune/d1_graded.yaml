@@ -1,0 +1,10 @@
+# Graded kernels: 5x5 where the feature maps are large, 7x7 where they are small.
+# At Res5 the map is 7x7, so a 7x7 depthwise kernel sees the whole frame.
+_base_: ../prep/rp_none.yaml
+name: d1_graded
+description: 5x5 in Res2-Res3, 7x7 in Res4-Res5
+model:
+  motion_attention: false
+  wide_kernel: reparam
+  wk_stages: [res2, res3, res4, res5]
+  wk_sizes: [5, 5, 7, 7]

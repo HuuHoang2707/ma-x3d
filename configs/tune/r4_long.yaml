@@ -1,0 +1,7 @@
+# More epochs now that more of the network is being trained.
+_base_: r1_unfreeze_all.yaml
+name: r4_long
+description: every stage fine-tuned, 72 epochs
+train:
+  epochs: 72
+  patience: 24

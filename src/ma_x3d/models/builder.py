@@ -60,11 +60,14 @@ def build_model(cfg: ModelConfig) -> nn.Module:
         return TorchvisionVideo(cfg.backbone, cfg.num_classes, cfg.pretrained)
     blocks = x3d_blocks(cfg.pretrained, cfg.num_classes, cfg.head_dropout, cfg.backbone)
     if cfg.wide_kernel != "none":
-        if cfg.wide_kernel not in ("reparam", "dense"):
-            raise ValueError(f"wide_kernel must be none|reparam|dense, got {cfg.wide_kernel!r}")
-        for stage in cfg.wk_stages:
-            widen_stage(blocks[STAGES[stage]], cfg.wide_kernel, cfg.wk_size,
-                        cfg.wk_tsize)
+        if cfg.wide_kernel not in ("reparam", "dense", "dilated"):
+            raise ValueError("wide_kernel must be none|reparam|dense|dilated, "
+                             f"got {cfg.wide_kernel!r}")
+        sizes = cfg.wk_sizes or [cfg.wk_size] * len(cfg.wk_stages)
+        if len(sizes) != len(cfg.wk_stages):
+            raise ValueError(f"wk_sizes has {len(sizes)} entries for {len(cfg.wk_stages)} stages")
+        for stage, size in zip(cfg.wk_stages, sizes, strict=True):
+            widen_stage(blocks[STAGES[stage]], cfg.wide_kernel, size, cfg.wk_tsize)
     for stage in cfg.tdm_stages:  # motion as features, added after the stage
         i = STAGES[stage]
         blocks[i] = WithTemporalDifference(blocks[i], STAGE_CHANNELS[stage], cfg.tdm_reduction)

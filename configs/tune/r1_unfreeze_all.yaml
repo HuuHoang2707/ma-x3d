@@ -1,0 +1,7 @@
+# The recipe was tuned for MA-X3D on the cropped data, and it leaves Res4 frozen
+# because the notebook put Motion Attention there. Train every stage instead.
+_base_: ../win/wa_wk_all.yaml
+name: r1_unfreeze_all
+description: all-stage wide kernels, every stage fine-tuned
+train:
+  unfreeze: [all]

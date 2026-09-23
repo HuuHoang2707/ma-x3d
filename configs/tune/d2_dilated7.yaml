@@ -1,0 +1,10 @@
+# RepLKNet-style dilated reparameterisation: a 7x7 receptive field trained with 9
+# weights per channel instead of 40, fused into one 7x7 kernel for inference.
+_base_: ../prep/rp_none.yaml
+name: d2_dilated7
+description: dilated reparameterisation to 7x7, every stage
+model:
+  motion_attention: false
+  wide_kernel: dilated
+  wk_stages: [res2, res3, res4, res5]
+  wk_size: 7

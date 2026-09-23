@@ -72,9 +72,10 @@ class ModelConfig:
     ma_modes: int = 4  # 0 feeds the raw motion map to the gate (no temporal conv)
     ma_temporal_kernel: int = 3
     ma_reduction: int = 4
-    wide_kernel: str = "reparam"  # none | reparam | dense
+    wide_kernel: str = "reparam"  # none | reparam | dense | dilated
     wk_stages: list[str] = field(default_factory=lambda: ["res2", "res3"])
-    wk_size: int = 5
+    wk_size: int = 5          # one size, or one per entry of wk_stages
+    wk_sizes: list[int] = field(default_factory=list)
     wk_tsize: int = 3   # temporal kernel; 5 widens in time as well as in space
     # stages whose output gets temporal difference features added
     tdm_stages: list[str] = field(default_factory=list)
