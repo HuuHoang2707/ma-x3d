@@ -29,7 +29,7 @@ def test_unknown_key_is_an_error():
 @pytest.mark.parametrize("path", sorted((ROOT / "configs").rglob("*.yaml")), ids=lambda p: p.stem)
 def test_every_config_loads(path):
     cfg = load_config(path)
-    assert cfg.model.wide_kernel in ("none", "reparam", "dense")
+    assert cfg.model.wide_kernel in ("none", "reparam", "dense", "dilated")
     assert cfg.data.protocol in ("holdout", "test_as_val", "kfold", "full")
     assert cfg.train.param_match in ("exact", "legacy")
 
