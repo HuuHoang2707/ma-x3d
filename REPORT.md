@@ -205,3 +205,34 @@ that has to generalise past its training scenes.
 
 X3D-M with 5x5 depthwise kernels in Res2-Res5, trained on uncropped frames. Motion
 attention is dropped. 3.27 M parameters fused, 5.92 GFLOPs per view.
+
+## Fold soup: one model from the k fold models
+
+The k-fold protocol trains four models from the same Kinetics weights, and their
+ensemble beats a single fold model in every seed. Averaging their weights instead of
+their predictions (a uniform model soup) gives one network at single-model cost.
+Test split, one view, no training.
+
+| experiment | dataset | single | ensemble (4 passes) | **soup (1 pass)** |
+|---|---|---|---|---|
+| wide kernels, 3 seeds (developed on) | RWF | 90.81 | 92.42 | 91.58 |
+| X3D-M, 3 seeds | RWF | 88.19 | 88.92 | 89.00 |
+| MA-X3D, uncropped | RWF | 89.06 | 89.50 | 90.50 |
+| MA-X3D, uncropped, no CLAHE | RWF | 89.38 | 89.75 | 90.25 |
+| MA-X3D, adaptive crop | RWF | 87.88 | 89.50 | 89.25 |
+| X3D-M, 3 seeds | Hockey | 95.62 | 96.00 | 95.67 |
+| MA-X3D, 3 seeds | Hockey | 95.46 | 96.17 | 96.00 |
+| X3D-M + KD | RLVS | 98.49 | 98.49 | 98.49 |
+| MA-X3D + KD | RLVS | 98.17 | 98.49 | 98.49 |
+
+Soup against a single fold model: **+0.69 on average, 7 wins, 0 losses, 2 ties**
+(sign test p = 0.016). Soup against the four-model ensemble: **+0.00 on average**, at a
+quarter of the inference cost. The gains are largest on RWF, where models vary most,
+and vanish where accuracy is at the ceiling (RLVS at 98.5).
+
+**BatchNorm recalibration does not replicate.** Re-estimating the statistics of the
+48 layers that differ between folds raised the development experiment from 91.58 to
+92.17, but on the eight replications it won four and lost four (mean -0.03), and it
+lost on both Hockey experiments. That first number was fitted to the test split, which
+is exactly what the replication was for. The recipe is the plain uniform soup.
+

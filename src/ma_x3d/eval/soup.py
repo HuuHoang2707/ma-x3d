@@ -7,9 +7,10 @@ in one basin, averaging their weights (a uniform model soup, Wortsman et al., IC
 extra inference cost. The recipe is fixed in advance (uniform, every fold), so
 scoring it on the test split involves no selection.
 
-BatchNorm running statistics are averaged with the weights; `recalibrate` optionally
-re-estimates them on training clips, since an average of statistics is not the
-statistics of the averaged network.
+BatchNorm running statistics are averaged with the weights. `recalibrate` re-estimates
+them on training clips for the layers where the folds differ; it helped on the
+experiment it was developed on and was a wash on eight replications (four better,
+four worse), so the recipe is the plain uniform soup.
 """
 
 from __future__ import annotations
