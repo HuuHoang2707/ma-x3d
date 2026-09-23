@@ -34,9 +34,17 @@ def _is_ring(name: str) -> bool:
     return name.endswith("delta_weight")
 
 
+# Every module that is added to the pre-trained network and therefore trained from
+# scratch at lr_new. A module missing from this list silently never trains, because
+# its parameters match no X3D stage either.
+NEW_PREFIXES = ("motion_attn.", "eaa.", "net.classifier.", "net.fc.", "diff_residual.",
+                "interaction.", "fast.", "apn.", "apn_weight", "zoom.")
+
+
 def _is_new(name: str, cfg: TrainConfig) -> bool:
-    if name.startswith(("motion_attn.", "eaa.", "net.classifier.", "net.fc.",
-                        "diff_residual.", "interaction.")):
+    if name.startswith(NEW_PREFIXES):
+        return True
+    if ".tdm." in name:  # temporal difference features, wrapped around a stage
         return True
     if "pool.score" in name:  # BurstPool
         return True

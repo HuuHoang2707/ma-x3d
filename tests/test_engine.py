@@ -36,3 +36,26 @@ def test_train_evaluate_report(tmp_path, monkeypatch, x3d_blocks):
 
     md = write_report(tmp_path / "runs", tmp_path / "reports")
     assert "smoke" in md and (out / "curves.png").exists()
+
+
+def test_every_added_module_trains():
+    """A module that matches no stage and is not listed as new would never train."""
+    from ma_x3d.config import ModelConfig, TrainConfig
+    from ma_x3d.models.builder import build_model
+    from ma_x3d.train.params import configure_phase
+
+    cases = {
+        "fast.": ModelConfig(motion_attention=False, wide_kernel="none", slowfast=True,
+                             frames=64),
+        ".tdm.": ModelConfig(motion_attention=False, wide_kernel="none",
+                             tdm_stages=["res2", "res3", "res4"]),
+        "motion_attn.": ModelConfig(wide_kernel="none"),
+        "diff_residual.": ModelConfig(motion_attention=False, wide_kernel="none",
+                                      diff_residual=["res3"]),
+    }
+    for key, mc in cases.items():
+        model = build_model(mc)
+        for phase in ("probe", "finetune"):
+            configure_phase(model, phase, TrainConfig())
+            flags = [p.requires_grad for n, p in model.named_parameters() if key in n]
+            assert flags and all(flags), f"{key} does not train in the {phase} phase"
