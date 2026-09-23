@@ -1,0 +1,14 @@
+# fast pathway + 5x5 kernels in every stage
+_base_: ../prep/rp_none.yaml
+name: s3_slowfast_wkall
+description: fast pathway + 5x5 kernels in every stage
+model:
+  motion_attention: false
+  wide_kernel: reparam
+  wk_stages: [res2, res3, res4, res5]
+  slowfast: true
+  sf_alpha: 2
+data:
+  frames: 32
+train:
+  batch_size: 6

@@ -1,0 +1,14 @@
+# fast pathway, 32 frames in, 16 in the main stream
+_base_: ../prep/rp_none.yaml
+name: s1_slowfast
+description: fast pathway, 32 frames in, 16 in the main stream
+model:
+  motion_attention: false
+  wide_kernel: none
+  wk_stages: [res2, res3]
+  slowfast: true
+  sf_alpha: 2
+data:
+  frames: 32
+train:
+  batch_size: 6

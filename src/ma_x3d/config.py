@@ -79,6 +79,11 @@ class ModelConfig:
     # stages whose output gets temporal difference features added
     tdm_stages: list[str] = field(default_factory=list)
     tdm_reduction: int = 4
+    # SlowFast-style thin branch at the full frame rate
+    slowfast: bool = False
+    sf_alpha: int = 4
+    sf_widths: list[int] = field(default_factory=lambda: [12, 12, 24])
+    frames: int = 16     # copied from the data config, for the check above
     eaa: bool = False  # efficient additive attention after Res5 (notebook v5 experiment)
     # stages whose output gets a zero-initialised temporal-difference residual
     diff_residual: list[str] = field(default_factory=list)
@@ -138,6 +143,10 @@ class Config:
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
+
+    def __post_init__(self) -> None:
+        # the fast pathway needs to know how many frames it is given
+        self.model.frames = self.data.frames
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)

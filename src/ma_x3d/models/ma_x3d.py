@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from .eaa import EfficientAdditiveAttention
 from .motion_attention import MotionAttention, motion_map
+from .slowfast import FastPathway
 
 # Index of each X3D stage in `blocks`.
 STAGES = {"stem": 0, "res2": 1, "res3": 2, "res4": 3, "res5": 4, "head": 5}
@@ -37,6 +38,7 @@ class MAX3D(nn.Module):
         interaction: nn.Module | None = None,
         zoom: nn.Module | None = None,
         apn: nn.Module | None = None,
+        fast: FastPathway | None = None,
     ):
         super().__init__()
         self.blocks = blocks
@@ -52,6 +54,7 @@ class MAX3D(nn.Module):
         self.interaction = interaction
         self.zoom = zoom
         self.apn = apn
+        self.fast = fast
         if apn is not None:  # zero-initialised: the local branches start silent
             self.apn_weight = nn.Parameter(torch.zeros(apn.crops))
         self.register_buffer("mean", torch.tensor(KINETICS_MEAN).view(1, 3, 1, 1, 1), False)
@@ -64,6 +67,10 @@ class MAX3D(nn.Module):
     def _run(self, clip: torch.Tensor, last: int, resize: bool = True) -> torch.Tensor:  # noqa: C901, E501
         if self.zoom is not None:  # scale normalisation, before anything else
             clip = self.zoom(clip)
+        fast_feats = None
+        if self.fast is not None:  # the fast pathway keeps every frame, the main stream
+            fast_feats = self.fast(clip)  # takes one in alpha
+            clip = clip[:, :, :: self.fast.alpha]
         if resize and clip.shape[-1] != self.input_size:  # e.g. X3D-XS/S at 160x160
             size = (clip.shape[2], self.input_size, self.input_size)
             clip = F.interpolate(clip, size=size, mode="trilinear", align_corners=False)
@@ -73,6 +80,9 @@ class MAX3D(nn.Module):
         x = (clip - self.mean) / self.std if self.normalize_input else clip
         for i, block in enumerate(self.blocks[: last + 1]):
             x = block(x)
+            if fast_feats is not None and i in (STAGES["res2"], STAGES["res3"]):
+                name = "res2" if i == STAGES["res2"] else "res3"
+                x = x + FastPathway.match(fast_feats[name], x)
             if str(i) in self.diff_residual:
                 x = self.diff_residual[str(i)](x)
             if i == self.ma_after and self.motion_attn is not None:

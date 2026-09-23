@@ -9,6 +9,7 @@ from .interaction import BurstPool, FeatureDiffResidual
 from .interaction_tokens import MotionPeakInteraction
 from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
 from .motion_attention import MotionAttention
+from .slowfast import FastPathway
 from .tdm import WithTemporalDifference
 from .teacher import TEACHERS, VideoMAEClassifier
 from .tv import TV_MODELS, TorchvisionVideo
@@ -67,6 +68,13 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     for stage in cfg.tdm_stages:  # motion as features, added after the stage
         i = STAGES[stage]
         blocks[i] = WithTemporalDifference(blocks[i], STAGE_CHANNELS[stage], cfg.tdm_reduction)
+    fast = None
+    if cfg.slowfast:
+        # the X3D head pools with a fixed 16-frame kernel, so alpha has to leave 16
+        if cfg.frames % cfg.sf_alpha or cfg.frames // cfg.sf_alpha != 16:
+            raise ValueError(f"slowfast needs data.frames / sf_alpha == 16, got "
+                             f"{cfg.frames} / {cfg.sf_alpha}")
+        fast = FastPathway(cfg.sf_alpha, tuple(cfg.sf_widths))
     ma = None
     if cfg.motion_attention:
         ma = MotionAttention(STAGE_CHANNELS[cfg.ma_stage], cfg.ma_modes, cfg.ma_temporal_kernel,
@@ -90,4 +98,5 @@ def build_model(cfg: ModelConfig) -> nn.Module:
     if cfg.motion_input not in ("frames", "zero"):
         raise ValueError(f"motion_input must be frames|zero, got {cfg.motion_input!r}")
     return MAX3D(blocks, ma, cfg.ma_stage, eaa, cfg.normalize_input, cfg.motion_multiscale,
-                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter, zoom, apn)
+                 cfg.motion_clip, cfg.motion_input, cfg.input_size, diff, inter, zoom,
+                 apn, fast)

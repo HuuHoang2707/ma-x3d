@@ -176,3 +176,20 @@ def test_temporal_difference_starts_as_identity():
     assert torch.allclose(tdm(x), x, atol=1e-6)          # zero-init output projection
     stage = nn.Conv3d(24, 24, 1)
     assert torch.allclose(WithTemporalDifference(stage, 24)(x), stage(x), atol=1e-6)
+
+
+def test_fast_pathway_starts_silent_and_sees_every_frame():
+    """The lateral connections are zero-initialised, so the slow stream is untouched."""
+    import torch
+
+    from ma_x3d.config import ModelConfig
+    from ma_x3d.models.builder import build_model
+
+    base = build_model(ModelConfig(motion_attention=False, wide_kernel="none")).eval()
+    sf = build_model(ModelConfig(motion_attention=False, wide_kernel="none",
+                                 slowfast=True, frames=64)).eval()
+    sf.load_state_dict(base.state_dict(), strict=False)
+    clip = torch.rand(1, 3, 64, 224, 224)   # alpha 4 leaves the main stream 16
+    with torch.no_grad():
+        assert torch.allclose(sf(clip), base(clip[:, :, ::4]), atol=1e-5)
+    assert sf.fast is not None and sf.fast.alpha == 4
