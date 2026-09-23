@@ -162,3 +162,17 @@ def test_temporal_wide_kernel_is_identity_and_fuses():
         assert wide.kernel_size == (t_size, size, size)
         assert torch.allclose(wide(x), conv(x), atol=1e-6)   # identity at init
         assert torch.allclose(wide.fuse()(x), wide(x), atol=1e-6)
+
+
+def test_temporal_difference_starts_as_identity():
+    """Motion enters as features, and the stage must start exactly as it was."""
+    import torch
+    import torch.nn as nn
+
+    from ma_x3d.models.tdm import TemporalDifference, WithTemporalDifference
+
+    x = torch.randn(2, 24, 8, 14, 14)
+    tdm = TemporalDifference(24)
+    assert torch.allclose(tdm(x), x, atol=1e-6)          # zero-init output projection
+    stage = nn.Conv3d(24, 24, 1)
+    assert torch.allclose(WithTemporalDifference(stage, 24)(x), stage(x), atol=1e-6)

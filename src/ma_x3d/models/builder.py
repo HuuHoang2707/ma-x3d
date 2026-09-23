@@ -9,6 +9,7 @@ from .interaction import BurstPool, FeatureDiffResidual
 from .interaction_tokens import MotionPeakInteraction
 from .ma_x3d import MAX3D, STAGE_CHANNELS, STAGES
 from .motion_attention import MotionAttention
+from .tdm import WithTemporalDifference
 from .teacher import TEACHERS, VideoMAEClassifier
 from .tv import TV_MODELS, TorchvisionVideo
 from .wide_kernel import widen_stage
@@ -63,6 +64,9 @@ def build_model(cfg: ModelConfig) -> nn.Module:
         for stage in cfg.wk_stages:
             widen_stage(blocks[STAGES[stage]], cfg.wide_kernel, cfg.wk_size,
                         cfg.wk_tsize)
+    for stage in cfg.tdm_stages:  # motion as features, added after the stage
+        i = STAGES[stage]
+        blocks[i] = WithTemporalDifference(blocks[i], STAGE_CHANNELS[stage], cfg.tdm_reduction)
     ma = None
     if cfg.motion_attention:
         ma = MotionAttention(STAGE_CHANNELS[cfg.ma_stage], cfg.ma_modes, cfg.ma_temporal_kernel,

@@ -1,0 +1,8 @@
+# Motion as features instead of as a gate, on the uncropped pipeline.
+_base_: ../prep/rp_none.yaml
+name: m1_tdm
+description: temporal difference features in Res2-Res4, X3D-M
+model:
+  motion_attention: false
+  wide_kernel: none
+  tdm_stages: [res2, res3, res4]

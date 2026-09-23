@@ -1,0 +1,7 @@
+# The two modules together: wider kernels for context, difference features for motion.
+_base_: m1_tdm.yaml
+name: m2_tdm_wkall
+description: temporal difference features + 5x5 kernels in every stage
+model:
+  wide_kernel: reparam
+  wk_stages: [res2, res3, res4, res5]

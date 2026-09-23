@@ -1,0 +1,7 @@
+# Control: the same motion signal used as a gate (motion attention) instead of features.
+_base_: ../prep/rp_none.yaml
+name: m3_ma_control
+description: motion attention, the gating alternative, same pipeline
+model:
+  motion_attention: true
+  wide_kernel: none
