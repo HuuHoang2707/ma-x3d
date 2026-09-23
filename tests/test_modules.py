@@ -193,3 +193,18 @@ def test_fast_pathway_starts_silent_and_sees_every_frame():
     with torch.no_grad():
         assert torch.allclose(sf(clip), base(clip[:, :, ::4]), atol=1e-5)
     assert sf.fast is not None and sf.fast.alpha == 4
+
+
+def test_wide_kernel_loads_either_ring_shape():
+    """The ring mask is derived, not learned; a checkpoint may store it in either shape."""
+    import torch
+    import torch.nn as nn
+
+    from ma_x3d.models.wide_kernel import WideKernelConv
+
+    conv = nn.Conv3d(4, 4, (3, 3, 3), padding=(1, 1, 1), groups=4)
+    wide = WideKernelConv(conv, 5)
+    state = wide.state_dict()
+    state["ring_mask"] = torch.ones(1, 1, 3, 5, 5)   # the shape one version briefly used
+    wide.load_state_dict(state)
+    assert wide.ring_mask.shape == (1, 1, 1, 5, 5)

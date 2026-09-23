@@ -37,6 +37,10 @@ class WideKernelConv(nn.Module):
 
         self.base_weight = nn.Parameter(conv.weight.detach().clone())
         self.bias = nn.Parameter(conv.bias.detach().clone()) if conv.bias is not None else None
+        # a spatial-only ring broadcasts over time, which keeps the buffer shape of
+        # the checkpoints trained before the temporal option existed
+        rt = t_size if self.off_t else 1
+        ring = torch.ones(1, 1, rt, size, size)
         if dilated:
             # RepLKNet's dilated re-parameterisation: the extra branch is another 3x3
             # whose taps are spread to reach the wide grid, so a 7x7 receptive field
@@ -44,14 +48,20 @@ class WideKernelConv(nn.Module):
             assert (size - 1) % (kh - 1) == 0
             self.dil = (size - 1) // (kh - 1)
             self.delta_weight = nn.Parameter(torch.zeros(out_c, in_c, t_size, kh, kw))
-            ring = torch.ones(1, 1, t_size, size, size)   # unused, kept for the buffer
         else:
             self.delta_weight = nn.Parameter(torch.zeros(out_c, in_c, t_size, size, size))
-            ring = torch.ones(1, 1, t_size, size, size)   # everything outside the old kernel
-            ring[:, :, self.off_t : self.off_t + kt,
+            ot = self.off_t
+            ring[:, :, ot : ot + (kt if rt > 1 else 1),
                  self.off : self.off + kh, self.off : self.off + kw] = 0.0
         self.register_buffer("ring_mask", ring)
         self.fast = False  # set by ops.depthwise3d.use_fast_depthwise
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # the ring is fixed by the kernel sizes, not learned: keep our own, whatever
+        # shape the checkpoint stored it in
+        if prefix + "ring_mask" in state_dict:
+            state_dict[prefix + "ring_mask"] = self.ring_mask
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     @property
     def weight(self) -> torch.Tensor:
