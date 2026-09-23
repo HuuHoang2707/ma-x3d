@@ -185,3 +185,23 @@ _updated 2026-09-23_
 The 32-frame variant buys its test gain with 2.3x the computation, which does not suit
 the efficiency argument; the all-stage wide kernel costs 25% more and stays under
 6 GFLOPs.
+
+## Seed check on the two candidates (three seeds, 12 fold models each)
+
+| model | OOF (s0/s1/s2) | mean OOF | test ens (s0/s1/s2) | mean test | single-model test |
+|---|---|---|---|---|---|
+| X3D-M | 92.80 / 92.61 / 92.36 | 92.59 | 89.50 / 89.50 / 87.75 | 88.92 | 88.18 |
+| + 5x5 in Res2-Res5 | 92.99 / 93.37 / 93.24 | **93.20** | 93.00 / 91.50 / 92.75 | **92.42** | **90.81** |
+| difference | | +0.61 | | +3.50 | +2.63 |
+
+Per-seed single-model difference: +2.87, +2.38, +2.62. Every seed agrees in size and
+direction, which is what the earlier Hockey result failed to do. Per-seed McNemar on the
+fold ensemble: p = 0.0043, 0.169, 0.0002. The out-of-fold gain is smaller (+0.61) than
+the test gain (+3.50) in all three seeds: widening the kernels helps more on the separate
+test videos than on held-out training clips, which is the behaviour you want from a model
+that has to generalise past its training scenes.
+
+## Chosen model
+
+X3D-M with 5x5 depthwise kernels in Res2-Res5, trained on uncropped frames. Motion
+attention is dropped. 3.27 M parameters fused, 5.92 GFLOPs per view.

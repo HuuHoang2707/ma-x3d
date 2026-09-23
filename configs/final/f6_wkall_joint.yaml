@@ -1,0 +1,14 @@
+# The final model: X3D-M with 5x5 depthwise kernels in every stage, uncropped frames,
+# trained on the whole training split of RWF-2000 plus Hockey Fights and RLVS.
+_base_: ../prep/rp_none.yaml
+name: f6_wkall_joint
+description: all-stage wide kernels, no crop, joint training, full split
+model:
+  motion_attention: false
+  wk_stages: [res2, res3, res4, res5]
+data:
+  protocol: full
+  extra_roots: [dataset/hockey_none, dataset/rlvs_none]
+train:
+  epochs: 20
+  probe_epochs: 2
