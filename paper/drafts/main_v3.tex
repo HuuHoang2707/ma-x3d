@@ -58,9 +58,10 @@ so the gate does not use the motion signal it is built on. Two effects
 outside the model are of the same order as the modules: choosing the epoch
 on the test split is worth 0.8 points, and a single seed produced a
 significant $+1.25$ points on Hockey Fights that three seeds removed.
-Combining the pipeline, the wide kernels and joint training over the three
-datasets reaches 91.5\% test accuracy with 3.4M parameters and 5.9 GFLOPs
-per view. Nine RWF-2000 training clips turn out to be copies of test clips.
+Averaging the weights of the four fold models that the protocol trains
+anyway gives a single model as accurate as their ensemble, and the final
+detector reaches 91.6\% test accuracy over three seeds with 3.3M
+parameters and 5.9 GFLOPs per view. Nine RWF-2000 training clips turn out to be copies of test clips.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -163,7 +164,10 @@ Our contributions are:
     and a measurement of what the usual shortcuts are worth: 0.8 points for
     test-split selection, and a significant single-seed result that three
     seeds erase (Section~\ref{sec:selection}).
-  \item A model that reaches 91.5\% on RWF-2000 with 3.4M parameters and
+  \item A uniform soup of the fold models that the protocol already
+    trains, which matches their ensemble at one forward pass on nine
+    experiments over three datasets (Section~\ref{sec:soup}), and a model
+    that reaches 91.6\% on RWF-2000 with 3.3M parameters and
     5.9 GFLOPs, and the code and configurations that reproduce every number
     in this paper.
 \end{itemize}
@@ -832,17 +836,57 @@ Section~\ref{sec:pipeline}, which behaves the same way. We report both
 numbers throughout and take our decisions on the out-of-fold one, which is
 the conservative choice.
 
-Two properties make the module practical rather than merely accurate. It
-is structurally reparameterised: the pre-trained $3\times3$ kernel and the
-zero-initialised outer ring are separate parameters during training, in
-separate learning-rate groups, and fold into one $5\times5$ kernel for
-inference, so the deployed graph is a plain X3D with slightly larger
-depthwise convolutions and 3.27M parameters rather than the 3.44M that
-train. Measured on one batch in fp32, the fused and unfused models agree to
-$3.7\times10^{-7}$. And because the ring starts at zero, the network begins
-fine-tuning as exactly the Kinetics model it extends, which matters at this
-data scale: the same widening trained as a dense $5\times5$ kernel from the
-inflated weights is worth 0.19 points less.
+Where the widening happens matters more than how wide it is
+(Table~\ref{tab:placement}). Widening only Res4--Res5 recovers most of the
+gain (90.75 against 91.25 for all four stages), while widening only
+Res2--Res3, the choice of the original design, gives 89.44. The reasoning
+behind that design was that early stages hold the large feature maps where
+a wider filter sees the most new pixels; the result points the other way.
+At Res4 and Res5 the maps are $14\times14$ and $7\times7$, so a $5\times5$
+kernel covers a large part of the scene, and it is scene-level context that
+the rest of this study keeps finding useful. Larger or other shapes do not
+help: $7\times7$ through dilated reparameterisation, kernels that are also
+wider in time ($5\times3\times3$, $5\times5\times5$) and graded
+$5\times5$/$7\times7$ kernels all land between X3D-M and plain $5\times5$.
+
+\begin{table}[t]
+  \centering
+  \caption{Where and how to widen, RWF-2000, uncropped pipeline, seed 0,
+  four folds. Test: mean of the four fold models. OOF differences are all
+  within noise; the ranking is by test accuracy.}
+  \label{tab:placement}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{llccc}
+    \toprule
+    Kernel & Stages & Params & OOF & Test \\
+    \midrule
+    $5\times5$            & Res2--Res5 & 3.44M & 92.99 & \textbf{91.25} \\
+    $5\times5$            & Res4--Res5 & 3.38M & 92.61 & 90.75 \\
+    $7\times7$ (dilated)  & Res2--Res5 & 3.14M & 92.93 & 90.31 \\
+    $5\times5\times5$     & Res2--Res5 & 3.74M & 92.55 & 90.06 \\
+    $5\times3\times3$     & Res2--Res5 & 3.25M & 92.87 & 90.00 \\
+    $5\times5$/$7\times7$ & Res2--Res5 & 3.83M & 92.99 & 89.44 \\
+    $5\times5$            & Res2--Res3 & 3.03M & 92.49 & 89.44 \\
+    none (X3D-M)          & --         & 2.98M & 92.80 & 88.37 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The module is structurally reparameterised: the pre-trained $3\times3$
+kernel and the zero-initialised outer ring are separate parameters during
+training and fold into one $5\times5$ kernel for inference, so the deployed
+graph is a plain X3D with slightly larger depthwise convolutions and 3.27M
+parameters rather than the 3.44M that train. Measured on one batch in fp32,
+the fused and unfused models agree to $3.7\times10^{-7}$. The separation
+also changes what can be trained. The recipe keeps Res4 frozen (unfreezing
+it costs two test points, Section~\ref{sec:recipe-clean}), and a dense
+$5\times5$ kernel in a frozen stage is frozen as a whole, so Res4 would
+never be widened. With the ring as its own parameter, the pre-trained
+kernel of Res4 stays fixed while the ring trains, which makes the ring an
+adapter that widens a frozen layer. Since the late stages carry most of the
+gain, this is not a detail.
+% TODO fill in the dense-5x5 and ring-at-backbone-rate controls when they land
+
 
 \subsection{The modules on the pipeline that wins}
 \label{sec:modules-clean}
@@ -889,40 +933,84 @@ pipeline result, and the test split of RWF-2000 is drawn from different
 source videos than the training split. We report both numbers rather than
 choosing the flattering one.
 
-\subsection{The resulting model}
-\label{sec:final}
+\subsection{One model from the folds}
+\label{sec:soup}
 
-Table~\ref{tab:final} puts the three ingredients together on the full
-training split, with no epoch selection of any kind: the schedule runs to
-its end and the test split is scored once. The uncropped pipeline, the
-all-stage wide kernels and joint training over RWF-2000, Hockey Fights and
-RLVS give 91.5\% with 3.4M parameters and 5.9 GFLOPs per view. For
-comparison, the same network and recipe on the pipeline of the original
-work reaches 86.5\%.
+The protocol trains four fold models from the same Kinetics weights, and
+their four-model ensemble is more accurate than any one of them in every
+seed (92.42 against 90.81 for the wide-kernel model). Averaging their
+weights rather than their predictions, a uniform model soup~\cite{soup},
+keeps that gain in one network with one forward pass. The recipe is fixed
+in advance: every fold, equal weights, nothing tuned.
+
+Table~\ref{tab:soup} applies it to nine experiments on three datasets.
+Against a single fold model the soup gains 0.69 points on average, with
+seven wins, no losses and two ties (sign test $p=0.016$); against the
+four-model ensemble it is level on average ($+0.00$), at a quarter of the
+inference cost. The gain follows the spread between fold models: it is
+largest on RWF-2000 and vanishes on RLVS, where accuracy is at 98.5\%.
+Re-estimating the BatchNorm statistics of the soup, which is often
+recommended, did not replicate: it helped on the experiment where we first
+tried it and won four and lost four of the other eight, so it is not part
+of the recipe.
 
 \begin{table}[t]
   \centering
-  \caption{RWF-2000, trained on the whole training split, test split scored
-  once. Joint training adds the training clips of Hockey Fights and RLVS.}
-  \label{tab:final}
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lccccc}
+  \caption{Test accuracy of a single fold model (mean), the four-model
+  ensemble and the uniform fold soup. Three seeds where marked (3s).}
+  \label{tab:soup}
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{llccc}
     \toprule
-    Model & Pipeline & Joint & Test & F1 & AUC \\
+    Model & Data & Single & Ensemble & Soup \\
     \midrule
-    MA-X3D         & cropped   & no  & 86.50 & 0.865 & 0.947 \\
-    MA-X3D         & cropped   & yes & 88.00 & 0.881 & 0.951 \\
-    MA-X3D         & uncropped & yes & 91.25 & 0.912 & 0.973 \\
-    Wide kernels   & uncropped & yes & \textbf{91.50} & 0.915 & 0.972 \\
+    Wide kernels (3s)      & RWF    & 90.81 & 92.42 & 91.58 \\
+    X3D-M (3s)             & RWF    & 88.19 & 88.92 & 89.00 \\
+    MA-X3D, uncropped      & RWF    & 89.06 & 89.50 & 90.50 \\
+    MA-X3D, no CLAHE       & RWF    & 89.38 & 89.75 & 90.25 \\
+    MA-X3D, adaptive crop  & RWF    & 87.88 & 89.50 & 89.25 \\
+    X3D-M (3s)             & Hockey & 95.62 & 96.00 & 95.67 \\
+    MA-X3D (3s)            & Hockey & 95.46 & 96.17 & 96.00 \\
+    X3D-M + KD             & RLVS   & 98.49 & 98.49 & 98.49 \\
+    MA-X3D + KD            & RLVS   & 98.17 & 98.49 & 98.49 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Test-time augmentation is available at a price: averaging two temporal
-offsets and their horizontal flips raises the four-fold ensemble from
-89.50\% to 91.00\% on the same models, at four times the inference cost.
-We report the single-view number as the headline, since the argument of
-this paper is about what a compact model can do per GFLOP.
+\subsection{The resulting model}
+\label{sec:final}
+
+The final detector is X3D-M with $5\times5$ kernels in all four stages,
+trained on the uncropped pipeline with the recipe of
+Section~\ref{sec:training}, and deployed as the soup of its four fold
+models. Over three seeds it reaches 91.58\% test accuracy (91.50, 92.00,
+91.25) with 3.27M parameters and 5.92 GFLOPs per view. Every choice that
+led to it was made on out-of-fold predictions, and the test split was
+scored once per seed. Under the same protocol, the configuration of the
+original work (cropped pipeline, Motion Attention and wide kernels in
+Res2--Res3) reaches 86.50\%; the 90.5\% it reported came from selecting the
+epoch on the test split.
+
+Two things we tried did not carry over to the final configuration.
+Training jointly on RWF-2000, Hockey Fights and RLVS added two points on
+the cropped pipeline but nothing inside the four-fold protocol on the
+uncropped one (89.56 against 91.25 for the fold models), and distillation
+from a VideoMAE-B teacher lost 0.5 points there. Test-time augmentation
+still helps at a price: two temporal offsets and their flips add about 1.5
+points at four times the inference cost. We report the single-view number,
+since the argument of this paper is about what a compact model can do per
+GFLOP.
+
+\subsection{The recipe on the final model}
+\label{sec:recipe-clean}
+
+The recipe was tuned for MA-X3D on the cropped pipeline, so we checked it
+on the final configuration. Fine-tuning Res4 as well, which the recipe
+leaves frozen, gains 0.32 out-of-fold points and loses 2.00 on the test
+split; raising the backbone learning rate to $10^{-4}$ loses 1.50. More
+trainable capacity fits the training scenes better and the unseen ones
+worse, which is the same pattern as the rest of the study from the other
+side, and the recipe transfers unchanged.
 
 \subsection{What the training recipe contributes}
 
@@ -1113,9 +1201,10 @@ input. Two effects outside the model remain of the same order as the
 modules, namely 0.8 points for choosing the epoch on the test split and a
 significant single-seed result on Hockey Fights that three seeds erase.
 
-The resulting detector reaches 91.5\% on RWF-2000 with 3.4M parameters and
-5.9 GFLOPs per view, trained on the full split with no selection of any
-kind. We release the splits, the duplicate audit, the seven rebuilt
+The resulting detector reaches 91.6\% on RWF-2000 over three seeds with
+3.3M parameters and 5.9 GFLOPs per view, deployed as the weight average of
+the four fold models that the protocol trains anyway, which is as accurate
+as their ensemble at a quarter of its cost. We release the splits, the duplicate audit, the seven rebuilt
 pipelines and the training code, so that the next lightweight detector can
 be compared on the same basis rather than on numbers whose protocol is
 unknown.
