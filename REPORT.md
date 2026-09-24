@@ -236,3 +236,41 @@ and vanish where accuracy is at the ceiling (RLVS at 98.5).
 lost on both Hockey experiments. That first number was fitted to the test split, which
 is exactly what the replication was for. The recipe is the plain uniform soup.
 
+## Kernel designs, recipe retune, joint k-fold (seed 0, uncropped, experiments frozen)
+
+| run | params | OOF | test (ens) | test (single) |
+|---|---|---|---|---|
+| X3D-M | 2.98 M | 92.80 | 89.50 | 88.37 ± 1.53 |
+| **5x5 in Res2-Res5 (chosen)** | 3.44 M | 92.99 | **93.00** | **91.25 ± 1.06** |
+| 5x5 in Res4-Res5 only | 3.38 M | 92.61 | 92.50 | 90.75 ± 0.68 |
+| 5x5 in Res2-Res3 only (thesis) | 3.03 M | 92.49 | 90.25 | 89.44 ± 0.87 |
+| dilated reparam to 7x7, all stages | 3.14 M | 92.93 | 91.25 | 90.31 ± 0.48 |
+| 5x3x3 (wider in time) | 3.25 M | 92.87 | 91.50 | 90.00 ± 0.73 |
+| 5x5x5 (space and time) | 3.74 M | 92.55 | 91.50 | 90.06 ± 0.78 |
+| graded 5x5 / 7x7 | 3.83 M | 92.99 | 90.50 | 89.44 ± 0.57 |
+| chosen + Res4 unfrozen | 3.44 M | 93.31 | 91.00 | 90.25 ± 1.02 |
+| chosen + backbone lr 1e-4 | 3.44 M | 92.93 | 91.50 | 90.38 ± 0.76 |
+| chosen + joint training, 20 epochs | 3.44 M | 92.11 | 90.50 | 89.56 ± 0.97 |
+
+Nothing beats plain 5x5 in every stage. Out of fold, every row is inside the noise
+(92.49 to 93.31). On test, most of the gain comes from the late stages: widening only
+Res4-Res5 gives 90.75, widening only Res2-Res3 gives 89.44, against 91.25 for all four.
+That is the opposite of the original design's reasoning (early stages have the large
+maps), and it fits the rest of the study: the network needs to see more of the scene
+where its features are already coarse. Wider in time, larger than 5x5, and dilated
+kernels add nothing over 5x5 in space. Joint training inside the k-fold protocol did
+not reproduce its earlier gain (it came from the cropped pipeline and a different
+model), so it is not part of the final recipe.
+
+## Final model
+
+X3D-M, 5x5 depthwise kernels in Res2-Res5 (reparameterised, fused for inference),
+uncropped pipeline, RWF-2000 only, four fold models averaged into one (uniform soup).
+
+| | |
+|---|---|
+| test accuracy | **91.58** mean over three seeds (91.50, 92.00, 91.25) |
+| params / GFLOPs | 3.27 M fused / 5.92 per view |
+| forward passes | one |
+| protocol | folds decided out of fold, soup recipe fixed in advance, test scored once |
+
