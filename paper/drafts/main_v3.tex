@@ -879,13 +879,15 @@ graph is a plain X3D with slightly larger depthwise convolutions and 3.27M
 parameters rather than the 3.44M that train. Measured on one batch in fp32,
 the fused and unfused models agree to $3.7\times10^{-7}$. The separation
 also changes what can be trained. The recipe keeps Res4 frozen (unfreezing
-it costs two test points, Section~\ref{sec:recipe-clean}), and a dense
-$5\times5$ kernel in a frozen stage is frozen as a whole, so Res4 would
-never be widened. With the ring as its own parameter, the pre-trained
-kernel of Res4 stays fixed while the ring trains, which makes the ring an
-adapter that widens a frozen layer. Since the late stages carry most of the
-gain, this is not a detail.
-% TODO fill in the dense-5x5 and ring-at-backbone-rate controls when they land
+it costs two test points, Section~\ref{sec:recipe-clean}). A dense
+$5\times5$ kernel in a frozen stage is frozen as a whole, whereas the
+separate ring keeps training while the pre-trained kernel of Res4 stays
+fixed, so the widening reaches every stage without unfreezing any of them.
+Where both forms can train, on the cropped pipeline with Res2--Res3
+widened, the dense and reparameterised kernels are within noise (90.90 and
+91.03 out of fold), so we present the reparameterisation as what makes the
+all-stage widening compatible with a frozen stage, not as a source of
+accuracy on its own.
 
 
 \subsection{The modules on the pipeline that wins}
